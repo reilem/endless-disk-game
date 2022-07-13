@@ -1,3 +1,4 @@
+#![cfg(target_arch = "wasm32")]
 use game_loop::*;
 use wasm_bindgen::prelude::*;
 use web_sys::console;
