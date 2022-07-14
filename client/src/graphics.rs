@@ -1,3 +1,4 @@
+#![cfg(not(target_arch = "wasm32"))]
 use winit::{
     event::*,
     event_loop::{ControlFlow, EventLoop},
