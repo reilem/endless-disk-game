@@ -1,4 +1,5 @@
 #![cfg(target_arch = "wasm32")]
+#[cfg(feature = "log")]
 use log::Level;
 use wasm_bindgen::prelude::*;
 
