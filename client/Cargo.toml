@@ -15,29 +15,37 @@ crate-type = ["cdylib", "rlib"]
 lto = true
 
 [features]
-default = ["wee_alloc"]
+default = ["wee_alloc", "console_error_panic_hook"]
 
 [dependencies]
 # Cross platform game loop, uses web_sys request_animation_frame under the hood for wasm
 game-loop = "0.9.1"
 
+## Non-WASM dependencies
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# Window library
+winit = "0.26"
+# Logger that can be configured from environment variables
+env_logger = "0.9"
+# Logging library
+log = "0.4"
+# Graphics library
+wgpu = "0.13"
+
+## WASM dependencies
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 # Bindings for JS & rust
 wasm-bindgen = "0.2.45"
 # Allocator, produces smaller wasm outputs
 wee_alloc = { version = "0.4.2", optional = true }
-
-# web_sys imported with console
-[dependencies.web-sys]
-version = "0.3.22"
-features = ["console", "Gpu"]
-
-# Enable only in debug
-[target."cfg(debug_assertions)".dependencies]
 # Throws panics into a console.error
-console_error_panic_hook = "0.1.5"
-# Logging library
-env_logger = "0.9"
+console_error_panic_hook = { version = "0.1.5", optional = true }
+# Wgpu specific for web
+wgpu = { version = "0.13", features = ["webgl"]}
+# Web-sys provides an interface to interact with browser API
+web-sys = { version = "0.3.22", features = ["Document", "Window", "Element"] }
+# Provides convenient console.log bindings (better than just using web-sys)
+console_log = "0.2.0"
 
 # These crates are used for running unit tests.
 [dev-dependencies]
