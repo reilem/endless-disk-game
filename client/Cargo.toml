@@ -18,15 +18,13 @@ lto = true
 default = ["wee_alloc", "console_log", "console_error_panic_hook", "log", "env_logger"]
 
 [dependencies]
-# Cross platform game loop, uses web_sys request_animation_frame under the hood for wasm
-game-loop = "0.9.1"
 # Logging library interface
 log = { version = "0.4", optional = true }
+# Window library
+winit = "0.26"
 
 ## Non-WASM dependencies
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-# Window library
-winit = "0.26"
 # Logger that can be configured from environment variables
 env_logger = { version = "0.9", optional = true }
 # Graphics library

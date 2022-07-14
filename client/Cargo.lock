@@ -408,16 +408,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "game-loop"
-version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a83659fd8f86e4bd345a63d1954010e9a3dc4f408e3b304750a8ab2774f73c02"
-dependencies = [
- "wasm-bindgen",
- "web-sys",
-]
-
-[[package]]
 name = "getrandom"
 version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1268,7 +1258,6 @@ dependencies = [
  "console_log",
  "env_logger",
  "futures",
- "game-loop",
  "js-sys",
  "log",
  "wasm-bindgen",
