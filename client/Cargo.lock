@@ -359,6 +359,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9ea835d29036a4087793836fa931b08837ad5e957da9e23886b29586fb9b6650"
 
 [[package]]
+name = "endless_game"
+version = "0.1.0"
+dependencies = [
+ "cfg-if 1.0.0",
+ "console_error_panic_hook",
+ "console_log",
+ "env_logger",
+ "futures",
+ "js-sys",
+ "log",
+ "pollster",
+ "wasm-bindgen",
+ "wasm-bindgen-futures 0.4.31",
+ "wasm-bindgen-test",
+ "web-sys",
+ "wee_alloc",
+ "wgpu",
+ "winit",
+]
+
+[[package]]
 name = "env_logger"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1254,26 +1275,6 @@ checksum = "0789dac148a8840bbcf9efe13905463b733fa96543bfbf263790535c11af7ba5"
 dependencies = [
  "proc-macro2 0.4.30",
  "quote 0.6.13",
-]
-
-[[package]]
-name = "wasm-game-prototype"
-version = "0.1.0"
-dependencies = [
- "console_error_panic_hook",
- "console_log",
- "env_logger",
- "futures",
- "js-sys",
- "log",
- "pollster",
- "wasm-bindgen",
- "wasm-bindgen-futures 0.4.31",
- "wasm-bindgen-test",
- "web-sys",
- "wee_alloc",
- "wgpu",
- "winit",
 ]
 
 [[package]]

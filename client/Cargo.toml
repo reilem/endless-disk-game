@@ -1,6 +1,6 @@
 # You must change these to your own details.
 [package]
-name = "wasm-game-prototype"
+name = "endless_game"
 description = "A prototype of a simple rust-based MMO"
 version = "0.1.0"
 authors = ["reilemx@gmail.com"]
@@ -22,6 +22,8 @@ default = ["wee_alloc", "console_log", "console_error_panic_hook", "log", "env_l
 log = { version = "0.4", optional = true }
 # Window library
 winit = "0.26"
+# Allows top-level compiler flag code block execution
+cfg-if = "1.0.0"
 
 ## Non-WASM dependencies
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
@@ -37,7 +39,7 @@ pollster = "0.2"
 # Bindings for JS & rust
 wasm-bindgen = "0.2.81"
 wasm-bindgen-futures = "0.4.31"
-# Allocator, produces smaller wasm outputs
+# Allocator (produces smaller wasm outputs)
 wee_alloc = { version = "0.4.2", optional = true }
 # Throws panics into a console.error
 console_error_panic_hook = { version = "0.1.5", optional = true }
