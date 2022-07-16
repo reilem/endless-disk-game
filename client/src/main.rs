@@ -1,4 +1,5 @@
 mod client_main;
+mod graphics;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn main() {

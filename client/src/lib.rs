@@ -4,6 +4,7 @@ use log::Level;
 use wasm_bindgen::prelude::*;
 
 mod client_wasm;
+mod graphics;
 
 #[cfg(feature = "wee_alloc")]
 #[global_allocator]

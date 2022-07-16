@@ -29,6 +29,8 @@ winit = "0.26"
 env_logger = { version = "0.9", optional = true }
 # Graphics library
 wgpu = "0.13"
+# Allows async thread blocking required for game loop
+pollster = "0.2"
 
 ## WASM dependencies
 [target.'cfg(target_arch = "wasm32")'.dependencies]
