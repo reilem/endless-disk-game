@@ -13,15 +13,10 @@ use winit::{
 // EXAMPLE: FROM WGPU EXAMPLE HELLO_TRIANGLE
 
 pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
-    // Create size, instance, surface & adapter
-    let (size, instance, surface, adapter) = init_adapter(&window).await;
-    // Create the logical device and command queue
-    let (device, queue) = get_device_queue(&adapter).await;
+    let (_size, surface, device, queue, mut config) = init_graphics(&window).await;
 
     // Load in the wgsl shader
     let shader = load_wgsl_shader(&device, include_str!("shader.wgsl"));
-
-    let swapchain_format = surface.get_supported_formats(&adapter)[0];
 
     let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
         label: None,
@@ -32,10 +27,8 @@ pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
     let render_pipeline = device.create_render_pipeline(&create_render_pipeline_descriptor(
         &shader,
         &pipeline_layout,
-        &[Some(swapchain_format.into())],
+        &[Some(config.format.into())],
     ));
-
-    let mut config = create_default_surface_config(&size, &swapchain_format);
 
     surface.configure(&device, &config);
 
@@ -44,7 +37,7 @@ pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
         // Have the closure take ownership of the resources.
         // `event_loop.run` never returns, therefore we must do this to ensure
         // the resources are properly cleaned up.
-        let _ = (&instance, &adapter, &shader);
+        let _ = &shader;
 
         *control_flow = ControlFlow::Wait;
         match event {
@@ -61,6 +54,10 @@ pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
         }
     });
 }
+
+/**
+ * HANDLES
+ */
 
 fn handle_resize(
     config: &mut SurfaceConfiguration,
@@ -116,14 +113,31 @@ fn handle_close() -> ControlFlow {
     ControlFlow::Exit
 }
 
-async fn init_adapter(
+/**
+ * INITIALISATION STUFF
+ */
+
+async fn init_graphics(
     window: &Window,
 ) -> (
     PhysicalSize<u32>,
-    wgpu::Instance,
     wgpu::Surface,
-    wgpu::Adapter,
+    wgpu::Device,
+    wgpu::Queue,
+    wgpu::SurfaceConfiguration,
 ) {
+    // Create size, instance, surface & adapter
+    let (size, surface, adapter) = init_adapter(&window).await;
+    // Create the logical device and command queue
+    let (device, queue) = init_device_queue(&adapter).await;
+    // Get best texture format for adapter
+    let texture_format = surface.get_supported_formats(&adapter)[0];
+    // Create default surface config
+    let config = init_default_surface_config(&size, &texture_format);
+    (size, surface, device, queue, config)
+}
+
+async fn init_adapter(window: &Window) -> (PhysicalSize<u32>, wgpu::Surface, wgpu::Adapter) {
     let size = window.inner_size();
     // Instance = Main purpose of instance: create surface & adapters
     let instance = wgpu::Instance::new(wgpu::Backends::all());
@@ -138,23 +152,52 @@ async fn init_adapter(
         })
         .await
         .expect("Failed to find an appropriate adapter");
-    (size, instance, surface, adapter)
+    (size, surface, adapter)
 }
 
-async fn get_device_queue(adapter: &wgpu::Adapter) -> (Device, Queue) {
+async fn init_device_queue(adapter: &wgpu::Adapter) -> (Device, Queue) {
+    // Use adapter to create Device and Queue
+    // Device = a connection to a physical device
+    // Queue = executes command buffers on device
     adapter
         .request_device(
             &wgpu::DeviceDescriptor {
-                label: None,
+                // Do not enable any extra features
                 features: wgpu::Features::empty(),
+                // Limits = what kind of resources we can create
                 // Make sure we use the texture resolution limits from the adapter, so we can support images the size of the swapchain.
-                limits: wgpu::Limits::downlevel_webgl2_defaults()
-                    .using_resolution(adapter.limits()),
+                // WebGL doesn't support all wgpu features so select specific ones for webgl if running wasm
+                limits: if cfg!(target_arch = "wasm32") {
+                    wgpu::Limits::downlevel_webgl2_defaults()
+                } else {
+                    // Note: If some older devices do not work replace this with: downlevel_default()
+                    wgpu::Limits::default()
+                },
+                label: None,
             },
             None,
         )
         .await
         .expect("Failed to create device")
+}
+
+fn init_default_surface_config(
+    size: &PhysicalSize<u32>,
+    format: &TextureFormat,
+) -> wgpu::SurfaceConfiguration {
+    // Defaults to support most devices
+    wgpu::SurfaceConfiguration {
+        // Define how SurfaceTexture will be used, RENDER_ATTACHMENT = write to screen
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+        // Define the format that will be used to store the SurfaceTexture in the GPU
+        format: *format,
+        // Width of the surface (usually width of window)
+        width: size.width,
+        // Height of surface (usually height of window)
+        height: size.height,
+        // Determines how to sync surface with display, Fifo (always supported) = cap display rate to Fps of display (VSync)
+        present_mode: wgpu::PresentMode::Fifo,
+    }
 }
 
 fn load_wgsl_shader(device: &Device, shader_path: &str) -> ShaderModule {
@@ -187,18 +230,5 @@ fn create_render_pipeline_descriptor<'a>(
         depth_stencil: None,
         multisample: wgpu::MultisampleState::default(),
         multiview: None,
-    }
-}
-
-fn create_default_surface_config(
-    size: &PhysicalSize<u32>,
-    swapchain_format: &TextureFormat,
-) -> wgpu::SurfaceConfiguration {
-    wgpu::SurfaceConfiguration {
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-        format: *swapchain_format,
-        width: size.width,
-        height: size.height,
-        present_mode: wgpu::PresentMode::Fifo,
     }
 }
