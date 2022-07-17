@@ -10,13 +10,13 @@ cfg_if::cfg_if! {
         static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
         #[wasm_bindgen(start)]
         pub fn start() -> Result<(), JsValue> {
-            log::info!("Starting non-wasm project...");
+            log::info!("Starting wasm client...");
             client_wasm::run();
             Ok(())
         }
     } else {
         pub fn start() -> Result<(), String> {
-            log::info!("Starting non-wasm project...");
+            log::info!("Starting desktop client...");
             client_desktop::run();
             Ok(())
         }
