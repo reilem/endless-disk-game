@@ -1,7 +1,6 @@
-use std::borrow::Cow;
 use wgpu::{
-    ColorTargetState, Device, PipelineLayout, PipelineLayoutDescriptor, Queue, RenderPipeline,
-    RenderPipelineDescriptor, ShaderModule, Surface, SurfaceConfiguration, TextureFormat,
+    include_wgsl, Device, PipelineLayoutDescriptor, Queue, RenderPipeline,
+    RenderPipelineDescriptor, Surface, SurfaceConfiguration, TextureFormat,
 };
 use winit::{
     dpi::PhysicalSize,
@@ -238,50 +237,35 @@ fn init_render_pipeline(
     config: &SurfaceConfiguration,
 ) -> wgpu::RenderPipeline {
     // Load in the wgsl shader
-    let shader = load_wgsl_shader(&device, include_str!("shader.wgsl"));
+    let shader = device.create_shader_module(include_wgsl!("shaders/tutorial.wgsl"));
     // Set pipeline layout
     let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
-        label: None,
+        label: Some("Main render pipeline layout"),
         bind_group_layouts: &[],
         push_constant_ranges: &[],
     });
     // Create render pipeline
-    device.create_render_pipeline(&create_render_pipeline_descriptor(
-        &shader,
-        &pipeline_layout,
-        &[Some(config.format.into())],
-    ))
-}
-
-fn load_wgsl_shader(device: &Device, shader_path: &str) -> ShaderModule {
-    // Load the shaders from disk
-    device.create_shader_module(wgpu::ShaderModuleDescriptor {
+    device.create_render_pipeline(&RenderPipelineDescriptor {
         label: None,
-        source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(shader_path)),
-    })
-}
-
-fn create_render_pipeline_descriptor<'a>(
-    shader: &'a ShaderModule,
-    pipeline_layout: &'a PipelineLayout,
-    targets: &'a [Option<ColorTargetState>],
-) -> RenderPipelineDescriptor<'a> {
-    RenderPipelineDescriptor {
-        label: None,
-        layout: Some(pipeline_layout),
+        layout: Some(&pipeline_layout),
         vertex: wgpu::VertexState {
-            module: shader,
-            entry_point: "vs_main",
-            buffers: &[],
+            module: &shader,
+            entry_point: "vs_main", // Entrypoint vertex shader function inside shader
+            buffers: &[],           // Vertices you want to pass to the shader
         },
         fragment: Some(wgpu::FragmentState {
-            module: shader,
-            entry_point: "fs_main",
-            targets,
+            // Some() because this is optional
+            module: &shader,
+            entry_point: "fs_main", // Entrypoint fragment shader function inside shader
+            targets: &[Some(wgpu::ColorTargetState {
+                format: config.format,                  // Use the surface's format
+                blend: Some(wgpu::BlendState::REPLACE), // Replace all colors
+                write_mask: wgpu::ColorWrites::ALL,     // Write to all channels (r,g,b,a)
+            })],
         }),
         primitive: wgpu::PrimitiveState::default(),
         depth_stencil: None,
         multisample: wgpu::MultisampleState::default(),
         multiview: None,
-    }
+    })
 }
