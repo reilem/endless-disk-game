@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use wgpu::{
-    ColorTargetState, Device, PipelineLayout, PipelineLayoutDescriptor, Queue,
-    RenderPipelineDescriptor, ShaderModule, TextureFormat,
+    ColorTargetState, Device, PipelineLayout, PipelineLayoutDescriptor, Queue, RenderPipeline,
+    RenderPipelineDescriptor, ShaderModule, Surface, SurfaceConfiguration, TextureFormat,
 };
 use winit::{
     dpi::PhysicalSize,
@@ -40,6 +40,7 @@ pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
     surface.configure(&device, &config);
 
     event_loop.run(move |event, _, control_flow| {
+        log::debug!("event_loop called");
         // Have the closure take ownership of the resources.
         // `event_loop.run` never returns, therefore we must do this to ensure
         // the resources are properly cleaned up.
@@ -50,50 +51,69 @@ pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
             Event::WindowEvent {
                 event: WindowEvent::Resized(size),
                 ..
-            } => {
-                // Reconfigure the surface with the new size
-                config.width = size.width;
-                config.height = size.height;
-                surface.configure(&device, &config);
-                // On macos the window needs to be redrawn manually after resizing
-                window.request_redraw();
-            }
-            Event::RedrawRequested(_) => {
-                let frame = surface
-                    .get_current_texture()
-                    .expect("Failed to acquire next swap chain texture");
-                let view = frame
-                    .texture
-                    .create_view(&wgpu::TextureViewDescriptor::default());
-                let mut encoder =
-                    device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-                {
-                    let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                        label: None,
-                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                            view: &view,
-                            resolve_target: None,
-                            ops: wgpu::Operations {
-                                load: wgpu::LoadOp::Clear(wgpu::Color::GREEN),
-                                store: true,
-                            },
-                        })],
-                        depth_stencil_attachment: None,
-                    });
-                    rpass.set_pipeline(&render_pipeline);
-                    rpass.draw(0..3, 0..1);
-                }
-
-                queue.submit(Some(encoder.finish()));
-                frame.present();
-            }
+            } => handle_resize(&mut config, &size, &surface, &device, &window),
+            Event::RedrawRequested(_) => handle_redraw(&surface, &device, &render_pipeline, &queue),
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
                 ..
-            } => *control_flow = ControlFlow::Exit,
+            } => *control_flow = handle_close(),
             _ => {}
         }
     });
+}
+
+fn handle_resize(
+    config: &mut SurfaceConfiguration,
+    size: &PhysicalSize<u32>,
+    surface: &Surface,
+    device: &Device,
+    window: &Window,
+) {
+    // Reconfigure the surface with the new size
+    config.width = size.width;
+    config.height = size.height;
+    surface.configure(&device, &config);
+    // On macos the window needs to be redrawn manually after resizing
+    window.request_redraw();
+}
+
+fn handle_redraw(
+    surface: &Surface,
+    device: &Device,
+    render_pipeline: &RenderPipeline,
+    queue: &Queue,
+) {
+    let frame = surface
+        .get_current_texture()
+        .expect("Failed to acquire next swap chain texture");
+    let view = frame
+        .texture
+        .create_view(&wgpu::TextureViewDescriptor::default());
+    let mut encoder =
+        device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+    {
+        let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: None,
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::GREEN),
+                    store: true,
+                },
+            })],
+            depth_stencil_attachment: None,
+        });
+        rpass.set_pipeline(render_pipeline);
+        rpass.draw(0..3, 0..1);
+    }
+
+    queue.submit(Some(encoder.finish()));
+    frame.present();
+}
+
+fn handle_close() -> ControlFlow {
+    ControlFlow::Exit
 }
 
 async fn init_adapter(
