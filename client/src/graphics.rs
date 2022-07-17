@@ -41,15 +41,17 @@ pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
 
         *control_flow = ControlFlow::Wait;
         match event {
-            Event::WindowEvent {
-                event: WindowEvent::Resized(size),
-                ..
-            } => handle_resize(&mut config, &size, &surface, &device, &window),
+            Event::WindowEvent { event, .. } => match event {
+                WindowEvent::Resized(new_size) => {
+                    handle_resize(&mut config, &new_size, &surface, &device, &window)
+                }
+                WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
+                    handle_resize(&mut config, new_inner_size, &surface, &device, &window)
+                }
+                WindowEvent::CloseRequested => *control_flow = handle_close(),
+                _ => {}
+            },
             Event::RedrawRequested(_) => handle_redraw(&surface, &device, &render_pipeline, &queue),
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                ..
-            } => *control_flow = handle_close(),
             _ => {}
         }
     });
@@ -61,17 +63,19 @@ pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
 
 fn handle_resize(
     config: &mut SurfaceConfiguration,
-    size: &PhysicalSize<u32>,
+    new_size: &PhysicalSize<u32>,
     surface: &Surface,
     device: &Device,
     window: &Window,
 ) {
-    // Reconfigure the surface with the new size
-    config.width = size.width;
-    config.height = size.height;
-    surface.configure(&device, &config);
-    // On macos the window needs to be redrawn manually after resizing
-    window.request_redraw();
+    if new_size.width > 0 && new_size.height > 0 {
+        // Reconfigure the surface with the new size
+        config.width = new_size.width;
+        config.height = new_size.height;
+        surface.configure(&device, &config);
+        // On macos the window needs to be redrawn manually after resizing
+        window.request_redraw();
+    }
 }
 
 fn handle_redraw(
