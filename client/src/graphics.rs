@@ -26,7 +26,8 @@ struct GraphicState {
     config: wgpu::SurfaceConfiguration,
     render_pipeline: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
-    vertex_count: u32,
+    index_buffer: wgpu::Buffer,
+    index_count: u32,
 }
 
 #[repr(C)]
@@ -66,17 +67,31 @@ impl Vertex {
 
 const VERTICES: &[Vertex] = &[
     Vertex {
-        position: [0.0, 0.5, 0.0],
-        color: [1.0, 0.0, 0.0],
-    },
+        position: [-0.0868241, 0.49240386, 0.0],
+        color: [0.5, 0.0, 0.5],
+    }, // A
     Vertex {
-        position: [-0.5, -0.5, 0.0],
-        color: [0.0, 1.0, 0.0],
-    },
+        position: [-0.49513406, 0.06958647, 0.0],
+        color: [0.5, 0.0, 0.5],
+    }, // B
     Vertex {
-        position: [0.5, -0.5, 0.0],
-        color: [0.0, 0.0, 1.0],
-    },
+        position: [-0.21918549, -0.44939706, 0.0],
+        color: [0.5, 0.0, 0.5],
+    }, // C
+    Vertex {
+        position: [0.35966998, -0.3473291, 0.0],
+        color: [0.5, 0.0, 0.5],
+    }, // D
+    Vertex {
+        position: [0.44147372, 0.2347359, 0.0],
+        color: [0.5, 0.0, 0.5],
+    }, // E
+];
+
+const INDICES: &[u16] = &[
+    0, 1, 4, // Triangle 1
+    1, 2, 4, // Triangle 2
+    2, 3, 4, // Triangle 3
 ];
 
 pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
@@ -139,6 +154,8 @@ impl GraphicState {
         let render_pipeline = init_render_pipeline(&device, &config);
         // Create vertex buffer
         let vertex_buffer = init_vertex_buffer(&device);
+        // Create index buffer
+        let index_buffer = init_index_buffer(&device);
         GraphicState {
             size,
             cursor: CursorPosition { x: 0.0, y: 0.0 },
@@ -148,7 +165,8 @@ impl GraphicState {
             config,
             render_pipeline,
             vertex_buffer,
-            vertex_count: VERTICES.len() as u32,
+            index_buffer,
+            index_count: INDICES.len() as u32,
         }
     }
 
@@ -229,8 +247,10 @@ impl GraphicState {
             rpass.set_pipeline(&self.render_pipeline);
             // Set the vertex buffer
             rpass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            // Draw something with 3 vertices and 1 instance
-            rpass.draw(0..self.vertex_count, 0..1);
+            // Set the index buffer
+            rpass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+            // Draw indices instead of vertices
+            rpass.draw_indexed(0..self.index_count, 0, 0..1);
         }
         // Finish command buffer and submit it to GPU's render
         self.queue.submit(Some(encoder.finish()));
@@ -359,5 +379,13 @@ fn init_vertex_buffer(device: &wgpu::Device) -> wgpu::Buffer {
         label: Some("Main vertex buffer"),
         contents: bytemuck::cast_slice(&VERTICES),
         usage: wgpu::BufferUsages::VERTEX,
+    })
+}
+
+fn init_index_buffer(device: &wgpu::Device) -> wgpu::Buffer {
+    device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Main index buffer"),
+        contents: bytemuck::cast_slice(&INDICES),
+        usage: wgpu::BufferUsages::INDEX,
     })
 }
