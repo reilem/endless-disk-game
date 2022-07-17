@@ -5,7 +5,7 @@ use super::graphics;
 
 pub fn run() {
     // Start logger, uses env variable MY_LOG_LEVEL to determine log level
-    // E.g. export MY_LOG_LEVEL='info'
+    // E.g. export RUST_LOG=debug
     #[cfg(feature = "env_logger")]
     env_logger::init();
 
