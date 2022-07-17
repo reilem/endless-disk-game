@@ -107,7 +107,7 @@ pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
         // the resources are properly cleaned up.
         let _ = &state;
 
-        *control_flow = ControlFlow::Wait;
+        *control_flow = ControlFlow::Wait; // Note: Setting this to ::Poll will run this as a game loop
         match event {
             Event::WindowEvent {
                 event, window_id, ..
