@@ -132,7 +132,9 @@ fn handle_redraw(
             })],
             depth_stencil_attachment: None,
         });
+        // Give the render pass the pipeline to use
         rpass.set_pipeline(render_pipeline);
+        // Draw something with 3 vertices and 1 instance
         rpass.draw(0..3, 0..1);
     }
     // Finish command buffer and submit it to GPU's render
@@ -263,9 +265,21 @@ fn init_render_pipeline(
                 write_mask: wgpu::ColorWrites::ALL,     // Write to all channels (r,g,b,a)
             })],
         }),
-        primitive: wgpu::PrimitiveState::default(),
+        primitive: wgpu::PrimitiveState {
+            topology: wgpu::PrimitiveTopology::TriangleList, // Every three vertices correspond to a triangle
+            strip_index_format: None,
+            front_face: wgpu::FrontFace::Ccw, // Arrange triangles in counter-clockwise direction to face front
+            cull_mode: Some(wgpu::Face::Back), // Cull any triangles not facing front
+            polygon_mode: wgpu::PolygonMode::Fill, // Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE
+            unclipped_depth: false,                // Requires Features::DEPTH_CLIP_CONTROL
+            conservative: false,                   // Requires Features::CONSERVATIVE_RASTERIZATION
+        },
         depth_stencil: None,
-        multisample: wgpu::MultisampleState::default(),
-        multiview: None,
+        multisample: wgpu::MultisampleState {
+            count: 1,                         // How many samples the pipeline will use (we use 1)
+            mask: !0,                         // Which samples should be active (we use all of them)
+            alpha_to_coverage_enabled: false, // Related to anti-aliasing
+        },
+        multiview: None, // How many array layers the render attachment will have
     })
 }
