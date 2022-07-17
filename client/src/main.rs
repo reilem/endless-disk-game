@@ -1,4 +1,3 @@
-#![cfg(not(target_arch = "wasm32"))]
 pub fn main() {
-    print!("Hello world!");
+    endless_game::start().expect("Error occurred");
 }

@@ -34,4 +34,7 @@ module.exports = {
   experiments: {
     syncWebAssembly: true,
   },
+  performance: {
+    hints: false
+  }
 };

@@ -5,6 +5,7 @@
   "scripts": {
     "build": "rimraf dist pkg && webpack",
     "start": "rimraf dist pkg && webpack-dev-server",
+    "desktop": "RUST_LOG=debug cargo run",
     "test": "cargo test && wasm-pack test --headless",
     "lint": "prettier --check .",
     "lint:fix": "prettier --write ."

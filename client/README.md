@@ -1,6 +1,6 @@
 # Client
 
-This crate holds the client code for a WIP rust game.
+This crate holds the client code for a WIP rust game. Everything is very experimental now so lots of things are pretty hacky.
 
 ## Setup
 
