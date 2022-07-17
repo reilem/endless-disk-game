@@ -1,13 +1,33 @@
 use wgpu::{
-    include_wgsl, util::DeviceExt, Device, PipelineLayoutDescriptor, Queue, RenderPipeline,
-    RenderPipelineDescriptor, Surface, SurfaceConfiguration, TextureFormat,
+    include_wgsl, util::DeviceExt, Device, PipelineLayoutDescriptor, Queue,
+    RenderPipelineDescriptor, SurfaceConfiguration, TextureFormat,
 };
 use winit::{
-    dpi::PhysicalSize,
+    dpi::{PhysicalPosition, PhysicalSize},
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::Window,
 };
+
+// TODO: Refactor this into multiple files
+// Keeping as-is for now to make sure that when we do the division we have all the information required
+
+struct CursorPosition {
+    x: f64,
+    y: f64,
+}
+
+struct GraphicState {
+    size: PhysicalSize<u32>,
+    cursor: CursorPosition,
+    surface: wgpu::Surface,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    config: wgpu::SurfaceConfiguration,
+    render_pipeline: wgpu::RenderPipeline,
+    vertex_buffer: wgpu::Buffer,
+    vertex_count: u32,
+}
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -60,29 +80,23 @@ const VERTICES: &[Vertex] = &[
 ];
 
 pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
-    let (_size, surface, device, queue, mut config, render_pipeline, vertex_buffer) =
-        init_graphics(&window).await;
-
-    let mut cursor_x: f64 = 0.0;
-    let mut cursor_y: f64 = 0.0;
+    let mut state = GraphicState::new(&window).await;
 
     log::debug!("Starting event_loop");
     event_loop.run(move |event, _, control_flow| {
         // Have the closure take ownership of the resources.
         // `event_loop.run` never returns, therefore we must do this to ensure
         // the resources are properly cleaned up.
-        let _ = (&surface, &device, &queue, &config, &render_pipeline);
+        let _ = &state;
 
         *control_flow = ControlFlow::Wait;
         match event {
             Event::WindowEvent {
                 event, window_id, ..
             } if window_id == window.id() => match event {
-                WindowEvent::Resized(new_size) => {
-                    handle_resize(&mut config, &new_size, &surface, &device, &window)
-                }
+                WindowEvent::Resized(new_size) => state.handle_resize(&new_size, &window),
                 WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
-                    handle_resize(&mut config, new_inner_size, &surface, &device, &window)
+                    state.handle_resize(&new_inner_size, &window)
                 }
                 WindowEvent::CloseRequested
                 | WindowEvent::KeyboardInput {
@@ -95,152 +109,133 @@ pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
                     ..
                 } => *control_flow = ControlFlow::Exit,
                 WindowEvent::CursorMoved { position, .. } => {
-                    cursor_x = position.x / (config.width as f64);
-                    cursor_y = position.y / (config.height as f64);
+                    state.handle_cursor(position);
                     window.request_redraw();
                 }
                 _ => {}
             },
-            Event::RedrawRequested(_) => {
-                let color = wgpu::Color {
-                    r: cursor_x,
-                    g: cursor_y * cursor_x,
-                    b: cursor_y,
-                    a: 1.0,
-                };
-                handle_redraw(
-                    &surface,
-                    &device,
-                    &render_pipeline,
-                    &queue,
-                    color,
-                    &vertex_buffer,
-                )
-            }
+            Event::RedrawRequested(_) => state.handle_redraw(),
             _ => {}
         }
     });
 }
 
-/**
- * HANDLES
- */
-
-/**
- * Handle resizing of the window
- */
-fn handle_resize(
-    config: &mut SurfaceConfiguration,
-    new_size: &PhysicalSize<u32>,
-    surface: &Surface,
-    device: &Device,
-    window: &Window,
-) {
-    if new_size.width > 0 && new_size.height > 0 {
-        // Reconfigure the surface with the new size
-        config.width = new_size.width;
-        config.height = new_size.height;
+impl GraphicState {
+    /**
+     * INITIALISATION STUFF
+     */
+    async fn new(window: &Window) -> Self {
+        // Create size, instance, surface & adapter
+        let (size, surface, adapter) = init_adapter(&window).await;
+        // Create the logical device and command queue
+        let (device, queue) = init_device_queue(&adapter).await;
+        // Get best texture format for adapter
+        let texture_format = surface.get_supported_formats(&adapter)[0];
+        // Create default surface config
+        let config = init_default_surface_config(&size, &texture_format);
+        // Configure the surface to use this device & configuration
         surface.configure(&device, &config);
-        // On macos the window needs to be redrawn manually after resizing
-        window.request_redraw();
+        // Create render pipeline
+        let render_pipeline = init_render_pipeline(&device, &config);
+        // Create vertex buffer
+        let vertex_buffer = init_vertex_buffer(&device);
+        GraphicState {
+            size,
+            cursor: CursorPosition { x: 0.0, y: 0.0 },
+            surface,
+            device,
+            queue,
+            config,
+            render_pipeline,
+            vertex_buffer,
+            vertex_count: VERTICES.len() as u32,
+        }
     }
-}
 
-/**
- * Handle redraw events
- */
-fn handle_redraw(
-    surface: &Surface,
-    device: &Device,
-    render_pipeline: &RenderPipeline,
-    queue: &Queue,
-    color: wgpu::Color,
-    vertex_buffer: &wgpu::Buffer,
-) {
-    log::debug!("Redraw!!");
-    // Get a TextureSurface "frame" from the surface that we can render to
-    let frame = surface
-        .get_current_texture()
-        .expect("Failed to acquire next swap chain texture");
-    // Create a texture view with default settings
-    let view = frame
-        .texture
-        .create_view(&wgpu::TextureViewDescriptor::default());
-    // Create a command encoder, makes command buffers to send to the gpu with commands in them
-    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-        label: Some("GPU Command Encoder"),
-    });
-    // Start a new code block so that the mutable encoder borrow is dropped after
-    {
-        // Clears the screen with a single color
-        let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("Main render pass"),
-            // Describe where to draw color to
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                // Which texture view to save color to
-                view: &view,
-                // Which texture view receives resolved output (view by default if not multisampling)
-                resolve_target: None,
-                // What to do with colors on the screen
-                ops: wgpu::Operations {
-                    // What to do with colors in previous frame, in this case: Clear to BLACK
-                    load: wgpu::LoadOp::Clear(color),
-                    // Wether to store the render result or not
-                    store: true,
-                },
-            })],
-            depth_stencil_attachment: None,
-        });
-        // Give the render pass the pipeline to use
-        rpass.set_pipeline(render_pipeline);
-        // Set the vertex buffer
-        rpass.set_vertex_buffer(0, vertex_buffer.slice(..));
-        // Draw something with 3 vertices and 1 instance
-        rpass.draw(0..(VERTICES.len() as u32), 0..1);
+    /**
+     * HANDLES
+     */
+
+    fn handle_cursor(&mut self, position: PhysicalPosition<f64>) {
+        self.cursor.x = position.x / (self.size.width as f64);
+        self.cursor.y = position.y / (self.size.height as f64);
     }
-    // Finish command buffer and submit it to GPU's render
-    queue.submit(Some(encoder.finish()));
-    frame.present();
-}
 
-/**
- * INITIALISATION STUFF
- */
+    /**
+     * Handle resizing of the window
+     */
+    fn handle_resize(&mut self, new_size: &PhysicalSize<u32>, window: &Window) {
+        if new_size.width > 0 && new_size.height > 0 {
+            // Reconfigure the surface with the new size
+            self.size = *new_size;
+            self.config.width = new_size.width;
+            self.config.height = new_size.height;
+            self.surface.configure(&self.device, &self.config);
+            // On macos the window needs to be redrawn manually after resizing
+            window.request_redraw();
+        }
+    }
 
-async fn init_graphics(
-    window: &Window,
-) -> (
-    PhysicalSize<u32>,
-    wgpu::Surface,
-    wgpu::Device,
-    wgpu::Queue,
-    wgpu::SurfaceConfiguration,
-    wgpu::RenderPipeline,
-    wgpu::Buffer,
-) {
-    // Create size, instance, surface & adapter
-    let (size, surface, adapter) = init_adapter(&window).await;
-    // Create the logical device and command queue
-    let (device, queue) = init_device_queue(&adapter).await;
-    // Get best texture format for adapter
-    let texture_format = surface.get_supported_formats(&adapter)[0];
-    // Create default surface config
-    let config = init_default_surface_config(&size, &texture_format);
-    // Configure the surface to use this device & configuration
-    surface.configure(&device, &config);
-    // Create render pipeline
-    let render_pipeline = init_render_pipeline(&device, &config);
-    // Create vertex buffer
-    let vertex_buffer = init_vertex_buffer(&device);
-    (
-        size,
-        surface,
-        device,
-        queue,
-        config,
-        render_pipeline,
-        vertex_buffer,
-    )
+    /**
+     * Handle redraw events
+     */
+    fn handle_redraw(&self) {
+        // Determine background color based on cursor position
+        let background_color = wgpu::Color {
+            r: self.cursor.x,
+            g: self.cursor.y * self.cursor.x,
+            b: self.cursor.y,
+            a: 1.0,
+        };
+
+        log::debug!("Redraw!!");
+        // Get a TextureSurface "frame" from the surface that we can render to
+        let frame = self
+            .surface
+            .get_current_texture()
+            .expect("Failed to acquire next swap chain texture");
+        // Create a texture view with default settings
+        let view = frame
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+        // Create a command encoder, makes command buffers to send to the gpu with commands in them
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("GPU Command Encoder"),
+            });
+        // Start a new code block so that the mutable encoder borrow is dropped after
+        {
+            // Clears the screen with a single color
+            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Main render pass"),
+                // Describe where to draw color to
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    // Which texture view to save color to
+                    view: &view,
+                    // Which texture view receives resolved output (view by default if not multisampling)
+                    resolve_target: None,
+                    // What to do with colors on the screen
+                    ops: wgpu::Operations {
+                        // What to do with colors in previous frame, in this case: Clear to BLACK
+                        load: wgpu::LoadOp::Clear(background_color),
+                        // Wether to store the render result or not
+                        store: true,
+                    },
+                })],
+                depth_stencil_attachment: None,
+            });
+            // Give the render pass the pipeline to use
+            rpass.set_pipeline(&self.render_pipeline);
+            // Set the vertex buffer
+            rpass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+            // Draw something with 3 vertices and 1 instance
+            rpass.draw(0..self.vertex_count, 0..1);
+        }
+        // Finish command buffer and submit it to GPU's render
+        self.queue.submit(Some(encoder.finish()));
+        frame.present();
+    }
 }
 
 async fn init_adapter(window: &Window) -> (PhysicalSize<u32>, wgpu::Surface, wgpu::Adapter) {
