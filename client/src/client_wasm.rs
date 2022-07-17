@@ -1,4 +1,6 @@
 #![cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::Closure;
+use wasm_bindgen::JsCast;
 use winit::event_loop::EventLoop;
 use winit::platform::web::WindowExtWebSys;
 use winit::window::Window;
@@ -14,10 +16,37 @@ fn init_logs() {
     console_log::init_with_level(log::Level::Debug).unwrap();
 }
 
+/**
+ * Prevents weird scrolling issues in mobile web
+ */
+fn disable_touch_events(window: &Window) {
+    let canvas = web_sys::Element::from(window.canvas());
+    let closure = Closure::wrap(Box::new(|event: web_sys::Event| {
+        event.prevent_default();
+    }) as Box<dyn Fn(web_sys::Event)>);
+    canvas
+        .add_event_listener_with_callback("touchstart", closure.as_ref().unchecked_ref())
+        .expect("Failed to add touchstart listener");
+    canvas
+        .add_event_listener_with_callback("touchmove", closure.as_ref().unchecked_ref())
+        .expect("Failed to add touchmove listener");
+    canvas
+        .add_event_listener_with_callback("touchend", closure.as_ref().unchecked_ref())
+        .expect("Failed to add touchend listener");
+    canvas
+        .add_event_listener_with_callback("touchcancel", closure.as_ref().unchecked_ref())
+        .expect("Failed to add touchcancel listener");
+    // If you don't add this the closure will be destroyed and do nothing
+    closure.forget();
+}
+
 fn start_web_window() -> (Window, EventLoop<()>) {
     // Start the event loop
     let event_loop = EventLoop::new();
     let window = Window::new(&event_loop).unwrap();
+
+    disable_touch_events(&window);
+
     // On wasm, append the canvas to the document body
     web_sys::window()
         .and_then(|win| win.document())
