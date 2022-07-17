@@ -1,5 +1,5 @@
 use wgpu::{
-    include_wgsl, Device, PipelineLayoutDescriptor, Queue, RenderPipeline,
+    include_wgsl, util::DeviceExt, Device, PipelineLayoutDescriptor, Queue, RenderPipeline,
     RenderPipelineDescriptor, Surface, SurfaceConfiguration, TextureFormat,
 };
 use winit::{
@@ -9,8 +9,59 @@ use winit::{
     window::Window,
 };
 
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+struct Vertex {
+    position: [f32; 3],
+    color: [f32; 3],
+}
+
+impl Vertex {
+    const ATTRIBS: [wgpu::VertexAttribute; 2] =
+        wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3];
+    // This tells the render_pipeline how to read the buffer
+    // Since the buffer is an array of bytes it will need to be told how to handle those bytes
+    fn buffer_layout_description<'a>() -> wgpu::VertexBufferLayout<'a> {
+        wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress, // The size of each vertex in bytes
+            step_mode: wgpu::VertexStepMode::Vertex, // Go over each one vertex-by-vertex
+            attributes: &Self::ATTRIBS,
+            // More verbose way:
+            // attributes: &[
+            //     // Describe the meaning of each struct field
+            //     wgpu::VertexAttribute {
+            //         offset: 0,
+            //         shader_location: 0, // Corresponds to `@location(x)` in WGSL shader
+            //         format: wgpu::VertexFormat::Float32x3, // 3 floats = size of position field
+            //     },
+            //     wgpu::VertexAttribute {
+            //         offset: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress, // Give it an offset corresponding to position field
+            //         shader_location: 1,
+            //         format: wgpu::VertexFormat::Float32x3, // 3 floats = size of color field
+            //     },
+            // ],
+        }
+    }
+}
+
+const VERTICES: &[Vertex] = &[
+    Vertex {
+        position: [0.0, 0.5, 0.0],
+        color: [1.0, 0.0, 0.0],
+    },
+    Vertex {
+        position: [-0.5, -0.5, 0.0],
+        color: [0.0, 1.0, 0.0],
+    },
+    Vertex {
+        position: [0.5, -0.5, 0.0],
+        color: [0.0, 0.0, 1.0],
+    },
+];
+
 pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
-    let (_size, surface, device, queue, mut config, render_pipeline) = init_graphics(&window).await;
+    let (_size, surface, device, queue, mut config, render_pipeline, vertex_buffer) =
+        init_graphics(&window).await;
 
     let mut cursor_x: f64 = 0.0;
     let mut cursor_y: f64 = 0.0;
@@ -57,7 +108,14 @@ pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
                     b: cursor_y,
                     a: 1.0,
                 };
-                handle_redraw(&surface, &device, &render_pipeline, &queue, color)
+                handle_redraw(
+                    &surface,
+                    &device,
+                    &render_pipeline,
+                    &queue,
+                    color,
+                    &vertex_buffer,
+                )
             }
             _ => {}
         }
@@ -97,6 +155,7 @@ fn handle_redraw(
     render_pipeline: &RenderPipeline,
     queue: &Queue,
     color: wgpu::Color,
+    vertex_buffer: &wgpu::Buffer,
 ) {
     log::debug!("Redraw!!");
     // Get a TextureSurface "frame" from the surface that we can render to
@@ -134,8 +193,10 @@ fn handle_redraw(
         });
         // Give the render pass the pipeline to use
         rpass.set_pipeline(render_pipeline);
+        // Set the vertex buffer
+        rpass.set_vertex_buffer(0, vertex_buffer.slice(..));
         // Draw something with 3 vertices and 1 instance
-        rpass.draw(0..3, 0..1);
+        rpass.draw(0..(VERTICES.len() as u32), 0..1);
     }
     // Finish command buffer and submit it to GPU's render
     queue.submit(Some(encoder.finish()));
@@ -155,6 +216,7 @@ async fn init_graphics(
     wgpu::Queue,
     wgpu::SurfaceConfiguration,
     wgpu::RenderPipeline,
+    wgpu::Buffer,
 ) {
     // Create size, instance, surface & adapter
     let (size, surface, adapter) = init_adapter(&window).await;
@@ -168,7 +230,17 @@ async fn init_graphics(
     surface.configure(&device, &config);
     // Create render pipeline
     let render_pipeline = init_render_pipeline(&device, &config);
-    (size, surface, device, queue, config, render_pipeline)
+    // Create vertex buffer
+    let vertex_buffer = init_vertex_buffer(&device);
+    (
+        size,
+        surface,
+        device,
+        queue,
+        config,
+        render_pipeline,
+        vertex_buffer,
+    )
 }
 
 async fn init_adapter(window: &Window) -> (PhysicalSize<u32>, wgpu::Surface, wgpu::Adapter) {
@@ -253,7 +325,10 @@ fn init_render_pipeline(
         vertex: wgpu::VertexState {
             module: &shader,
             entry_point: "vs_main", // Entrypoint vertex shader function inside shader
-            buffers: &[],           // Vertices you want to pass to the shader
+            buffers: &[
+                // Description of the buffers you want to pass to the shader
+                Vertex::buffer_layout_description(),
+            ],
         },
         fragment: Some(wgpu::FragmentState {
             // Some() because this is optional
@@ -281,5 +356,13 @@ fn init_render_pipeline(
             alpha_to_coverage_enabled: false, // Related to anti-aliasing
         },
         multiview: None, // How many array layers the render attachment will have
+    })
+}
+
+fn init_vertex_buffer(device: &wgpu::Device) -> wgpu::Buffer {
+    device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Main vertex buffer"),
+        contents: bytemuck::cast_slice(&VERTICES),
+        usage: wgpu::BufferUsages::VERTEX,
     })
 }
