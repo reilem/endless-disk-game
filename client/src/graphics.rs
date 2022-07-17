@@ -28,18 +28,19 @@ struct GraphicState {
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
     index_count: u32,
+    diffuse_bind_group: wgpu::BindGroup,
 }
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct Vertex {
     position: [f32; 3],
-    color: [f32; 3],
+    tex_coords: [f32; 2],
 }
 
 impl Vertex {
     const ATTRIBS: [wgpu::VertexAttribute; 2] =
-        wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3];
+        wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2];
     // This tells the render_pipeline how to read the buffer
     // Since the buffer is an array of bytes it will need to be told how to handle those bytes
     fn buffer_layout_description<'a>() -> wgpu::VertexBufferLayout<'a> {
@@ -64,27 +65,29 @@ impl Vertex {
         }
     }
 }
-
+// y should be (1 - y) because all texture y coordinates are flipped
+// (1,1) in bottom right
+// (0,0) in top left
 const VERTICES: &[Vertex] = &[
     Vertex {
         position: [-0.0868241, 0.49240386, 0.0],
-        color: [0.5, 0.0, 0.5],
+        tex_coords: [0.4131759, 1.0 - 0.99240386],
     }, // A
     Vertex {
         position: [-0.49513406, 0.06958647, 0.0],
-        color: [0.5, 0.0, 0.5],
+        tex_coords: [0.0048659444, 1.0 - 0.56958647],
     }, // B
     Vertex {
         position: [-0.21918549, -0.44939706, 0.0],
-        color: [0.5, 0.0, 0.5],
+        tex_coords: [0.28081453, 1.0 - 0.05060294],
     }, // C
     Vertex {
         position: [0.35966998, -0.3473291, 0.0],
-        color: [0.5, 0.0, 0.5],
+        tex_coords: [0.85967, 1.0 - 0.1526709],
     }, // D
     Vertex {
         position: [0.44147372, 0.2347359, 0.0],
-        color: [0.5, 0.0, 0.5],
+        tex_coords: [0.9414737, 1.0 - 0.7347359],
     }, // E
 ];
 
@@ -150,12 +153,15 @@ impl GraphicState {
         let config = init_default_surface_config(&size, &texture_format);
         // Configure the surface to use this device & configuration
         surface.configure(&device, &config);
+        // Create texture bind group
+        let (diffuse_bind_group, diffuse_bind_group_layout) = init_texture(&device, &queue);
         // Create render pipeline
-        let render_pipeline = init_render_pipeline(&device, &config);
+        let render_pipeline = init_render_pipeline(&device, &config, &diffuse_bind_group_layout);
         // Create vertex buffer
         let vertex_buffer = init_vertex_buffer(&device);
         // Create index buffer
         let index_buffer = init_index_buffer(&device);
+
         GraphicState {
             size,
             cursor: CursorPosition { x: 0.0, y: 0.0 },
@@ -167,6 +173,7 @@ impl GraphicState {
             vertex_buffer,
             index_buffer,
             index_count: INDICES.len() as u32,
+            diffuse_bind_group,
         }
     }
 
@@ -245,6 +252,8 @@ impl GraphicState {
             });
             // Give the render pass the pipeline to use
             rpass.set_pipeline(&self.render_pipeline);
+            // Set the texture bind group
+            rpass.set_bind_group(0, &self.diffuse_bind_group, &[]);
             // Set the vertex buffer
             rpass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             // Set the index buffer
@@ -321,16 +330,132 @@ fn init_default_surface_config(
     }
 }
 
+// TODO: this is way too big. I think textures will need their own module in the future
+// We can then also use some compiler flags to load in images in different ways
+fn init_texture(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+) -> (wgpu::BindGroup, wgpu::BindGroupLayout) {
+    // TODO: Consider loading in images differently on desktop vs wasm
+    // Load in bytes from file
+    let diffuse_bytes = include_bytes!("textures/happy-tree.png");
+    // Turn the bytes into an image
+    let diffuse_image = image::load_from_memory(diffuse_bytes).expect("Failed to load image");
+    // Get Vec of rgba bytes
+    let diffuse_rgba = diffuse_image.to_rgba8();
+    use image::GenericImageView;
+    // Get dimensions of the image
+    let dimensions = diffuse_image.dimensions();
+
+    // Define texture size
+    let texture_size = wgpu::Extent3d {
+        width: dimensions.0,
+        height: dimensions.1,
+        depth_or_array_layers: 1,
+    };
+
+    // Create texture object
+    let diffuse_texture = device.create_texture(&wgpu::TextureDescriptor {
+        size: texture_size,
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2, // 2D texture
+        // Most images use sRGB
+        format: wgpu::TextureFormat::Rgba8UnormSrgb,
+        // TEXTURE_BINDING = use this texture in shaders
+        // COP_DST = copy data to this texture
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        label: Some("Happy tree texture"),
+    });
+
+    // Write texture data into the texture
+    queue.write_texture(
+        wgpu::ImageCopyTexture {
+            texture: &diffuse_texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        &diffuse_rgba,
+        wgpu::ImageDataLayout {
+            offset: 0,
+            bytes_per_row: std::num::NonZeroU32::new(4 * dimensions.0),
+            rows_per_image: std::num::NonZeroU32::new(dimensions.1),
+        },
+        texture_size,
+    );
+
+    // Texture view offers a view into our texture
+    let diffuse_texture_view = diffuse_texture.create_view(&wgpu::TextureViewDescriptor::default());
+    // Sampler controls how the texture is sampled in the shaders
+    let diffuse_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        address_mode_u: wgpu::AddressMode::ClampToEdge, // horizontal clamping (like GLSL) what to do if sampler gets coords outside of texture
+        address_mode_v: wgpu::AddressMode::ClampToEdge, // vertical clamping (like GLSL)
+        mag_filter: wgpu::FilterMode::Nearest,          // magnification filtering (like GLSL)
+        min_filter: wgpu::FilterMode::Nearest,          // minimisation filtering (like GLSL)
+        ..Default::default()
+    });
+
+    // Bind group layout will be used to crate a bind group
+    let texture_bind_group_layout =
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    // Sampled texture at binding 0
+                    binding: 0,
+                    // Only visible to fragment shader
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    // Sampler at binding 1
+                    binding: 1,
+                    // Only visible to fragment shader
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+            label: Some("Main texture bind group layout"),
+        });
+
+    // Create texture bind group, each texture will require their own bind group
+    // This is the final object required to use the texture
+    let texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        layout: &texture_bind_group_layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                // entry binds the previously created texture view
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(&diffuse_texture_view),
+            },
+            wgpu::BindGroupEntry {
+                // entry binds the previously created sampler
+                binding: 1,
+                resource: wgpu::BindingResource::Sampler(&diffuse_sampler),
+            },
+        ],
+        label: Some("Main texture bind group"),
+    });
+    (texture_bind_group, texture_bind_group_layout)
+}
+
 fn init_render_pipeline(
     device: &wgpu::Device,
     config: &SurfaceConfiguration,
+    diffuse_bind_group_layout: &wgpu::BindGroupLayout,
 ) -> wgpu::RenderPipeline {
     // Load in the wgsl shader
     let shader = device.create_shader_module(include_wgsl!("shaders/tutorial.wgsl"));
     // Set pipeline layout
     let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
         label: Some("Main render pipeline layout"),
-        bind_group_layouts: &[],
+        bind_group_layouts: &[diffuse_bind_group_layout],
         push_constant_ranges: &[],
     });
     // Create render pipeline
