@@ -125,14 +125,16 @@ async fn init_adapter(
     wgpu::Adapter,
 ) {
     let size = window.inner_size();
+    // Instance = Main purpose of instance: create surface & adapters
     let instance = wgpu::Instance::new(wgpu::Backends::all());
+    // Surface = part of the window we draw to (window needs to implement raw-window-handler, winit does this)
     let surface = unsafe { instance.create_surface(&window) };
+    // Adapter = handle to graphics card, used to create device & queue
     let adapter = instance
         .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::default(),
-            force_fallback_adapter: false,
-            // Request an adapter which can render to our surface
-            compatible_surface: Some(&surface),
+            power_preference: wgpu::PowerPreference::default(), // default, LowPower, HighPower
+            force_fallback_adapter: false, // Force to work on all systems (uses software instead of hardware)
+            compatible_surface: Some(&surface), // Find an adapter which can render to the requested surface
         })
         .await
         .expect("Failed to find an appropriate adapter");
