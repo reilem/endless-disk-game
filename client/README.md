@@ -31,7 +31,9 @@ Debug mode: Builds the project and opens it in a new browser tab. Auto-reloads w
 npm start
 ```
 
-Release mode: # Builds the project and places it into the `dist` folder.
+The game can then be accessed at: http://localhost:3000
+
+Release mode: Builds the project and places it into the `dist` folder.
 ```sh
 npm run build
 ```
@@ -40,7 +42,12 @@ npm run build
 
 Root of the non-wasm project is the `main.rs` file.
 
-For now just run:
+Running with debug logging:
+```sh
+npm run desktop
+```
+
+Running with only error logging:
 ```sh
 cargo run
 ```
