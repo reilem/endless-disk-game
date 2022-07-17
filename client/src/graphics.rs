@@ -5,7 +5,7 @@ use wgpu::{
 };
 use winit::{
     dpi::PhysicalSize,
-    event::{Event, WindowEvent},
+    event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::Window,
 };
@@ -13,42 +13,36 @@ use winit::{
 // EXAMPLE: FROM WGPU EXAMPLE HELLO_TRIANGLE
 
 pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
-    let (_size, surface, device, queue, mut config) = init_graphics(&window).await;
+    let (_size, surface, device, queue, mut config, render_pipeline) = init_graphics(&window).await;
 
-    // Load in the wgsl shader
-    let shader = load_wgsl_shader(&device, include_str!("shader.wgsl"));
-
-    let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
-        label: None,
-        bind_group_layouts: &[],
-        push_constant_ranges: &[],
-    });
-
-    let render_pipeline = device.create_render_pipeline(&create_render_pipeline_descriptor(
-        &shader,
-        &pipeline_layout,
-        &[Some(config.format.into())],
-    ));
-
-    surface.configure(&device, &config);
-
+    log::debug!("Starting event_loop");
     event_loop.run(move |event, _, control_flow| {
-        log::debug!("event_loop called");
         // Have the closure take ownership of the resources.
         // `event_loop.run` never returns, therefore we must do this to ensure
         // the resources are properly cleaned up.
-        let _ = &shader;
+        let _ = (&surface, &device, &queue, &config, &render_pipeline);
 
         *control_flow = ControlFlow::Wait;
         match event {
-            Event::WindowEvent { event, .. } => match event {
+            Event::WindowEvent {
+                event, window_id, ..
+            } if window_id == window.id() => match event {
                 WindowEvent::Resized(new_size) => {
                     handle_resize(&mut config, &new_size, &surface, &device, &window)
                 }
                 WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
                     handle_resize(&mut config, new_inner_size, &surface, &device, &window)
                 }
-                WindowEvent::CloseRequested => *control_flow = handle_close(),
+                WindowEvent::CloseRequested
+                | WindowEvent::KeyboardInput {
+                    input:
+                        KeyboardInput {
+                            state: ElementState::Pressed,
+                            virtual_keycode: Some(VirtualKeyCode::Escape),
+                            ..
+                        },
+                    ..
+                } => *control_flow = ControlFlow::Exit,
                 _ => {}
             },
             Event::RedrawRequested(_) => handle_redraw(&surface, &device, &render_pipeline, &queue),
@@ -61,6 +55,9 @@ pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
  * HANDLES
  */
 
+/**
+ * Handle resizing of the window
+ */
 fn handle_resize(
     config: &mut SurfaceConfiguration,
     new_size: &PhysicalSize<u32>,
@@ -78,28 +75,44 @@ fn handle_resize(
     }
 }
 
+/**
+ * Handle redraw events
+ */
 fn handle_redraw(
     surface: &Surface,
     device: &Device,
     render_pipeline: &RenderPipeline,
     queue: &Queue,
 ) {
+    log::debug!("Redraw!!");
+    // Get a TextureSurface "frame" from the surface that we can render to
     let frame = surface
         .get_current_texture()
         .expect("Failed to acquire next swap chain texture");
+    // Create a texture view with default settings
     let view = frame
         .texture
         .create_view(&wgpu::TextureViewDescriptor::default());
-    let mut encoder =
-        device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+    // Create a command encoder, makes command buffers to send to the gpu with commands in them
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("GPU Command Encoder"),
+    });
+    // Start a new code block so that the mutable encoder borrow is dropped after
     {
+        // Clears the screen with a single color
         let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: None,
+            label: Some("Main render pass"),
+            // Describe where to draw color to
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                // Which texture view to save color to
                 view: &view,
+                // Which texture view receives resolved output (view by default if not multisampling)
                 resolve_target: None,
+                // What to do with colors on the screen
                 ops: wgpu::Operations {
+                    // What to do with colors in previous frame, in this case: Clear to BLACK
                     load: wgpu::LoadOp::Clear(wgpu::Color::GREEN),
+                    // Wether to store the render result or not
                     store: true,
                 },
             })],
@@ -108,13 +121,9 @@ fn handle_redraw(
         rpass.set_pipeline(render_pipeline);
         rpass.draw(0..3, 0..1);
     }
-
+    // Finish command buffer and submit it to GPU's render
     queue.submit(Some(encoder.finish()));
     frame.present();
-}
-
-fn handle_close() -> ControlFlow {
-    ControlFlow::Exit
 }
 
 /**
@@ -129,6 +138,7 @@ async fn init_graphics(
     wgpu::Device,
     wgpu::Queue,
     wgpu::SurfaceConfiguration,
+    wgpu::RenderPipeline,
 ) {
     // Create size, instance, surface & adapter
     let (size, surface, adapter) = init_adapter(&window).await;
@@ -138,7 +148,11 @@ async fn init_graphics(
     let texture_format = surface.get_supported_formats(&adapter)[0];
     // Create default surface config
     let config = init_default_surface_config(&size, &texture_format);
-    (size, surface, device, queue, config)
+    // Configure the surface to use this device & configuration
+    surface.configure(&device, &config);
+    // Create render pipeline
+    let render_pipeline = init_render_pipeline(&device, &config);
+    (size, surface, device, queue, config, render_pipeline)
 }
 
 async fn init_adapter(window: &Window) -> (PhysicalSize<u32>, wgpu::Surface, wgpu::Adapter) {
@@ -202,6 +216,26 @@ fn init_default_surface_config(
         // Determines how to sync surface with display, Fifo (always supported) = cap display rate to Fps of display (VSync)
         present_mode: wgpu::PresentMode::Fifo,
     }
+}
+
+fn init_render_pipeline(
+    device: &wgpu::Device,
+    config: &SurfaceConfiguration,
+) -> wgpu::RenderPipeline {
+    // Load in the wgsl shader
+    let shader = load_wgsl_shader(&device, include_str!("shader.wgsl"));
+    // Set pipeline layout
+    let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
+        label: None,
+        bind_group_layouts: &[],
+        push_constant_ranges: &[],
+    });
+    // Create render pipeline
+    device.create_render_pipeline(&create_render_pipeline_descriptor(
+        &shader,
+        &pipeline_layout,
+        &[Some(config.format.into())],
+    ))
 }
 
 fn load_wgsl_shader(device: &Device, shader_path: &str) -> ShaderModule {
