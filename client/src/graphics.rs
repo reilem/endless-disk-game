@@ -10,10 +10,11 @@ use winit::{
     window::Window,
 };
 
-// EXAMPLE: FROM WGPU EXAMPLE HELLO_TRIANGLE
-
 pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
     let (_size, surface, device, queue, mut config, render_pipeline) = init_graphics(&window).await;
+
+    let mut cursor_x: f64 = 0.0;
+    let mut cursor_y: f64 = 0.0;
 
     log::debug!("Starting event_loop");
     event_loop.run(move |event, _, control_flow| {
@@ -43,9 +44,22 @@ pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
                         },
                     ..
                 } => *control_flow = ControlFlow::Exit,
+                WindowEvent::CursorMoved { position, .. } => {
+                    cursor_x = position.x / (config.width as f64);
+                    cursor_y = position.y / (config.height as f64);
+                    window.request_redraw();
+                }
                 _ => {}
             },
-            Event::RedrawRequested(_) => handle_redraw(&surface, &device, &render_pipeline, &queue),
+            Event::RedrawRequested(_) => {
+                let color = wgpu::Color {
+                    r: cursor_x,
+                    g: cursor_y * cursor_x,
+                    b: cursor_y,
+                    a: 1.0,
+                };
+                handle_redraw(&surface, &device, &render_pipeline, &queue, color)
+            }
             _ => {}
         }
     });
@@ -83,6 +97,7 @@ fn handle_redraw(
     device: &Device,
     render_pipeline: &RenderPipeline,
     queue: &Queue,
+    color: wgpu::Color,
 ) {
     log::debug!("Redraw!!");
     // Get a TextureSurface "frame" from the surface that we can render to
@@ -111,7 +126,7 @@ fn handle_redraw(
                 // What to do with colors on the screen
                 ops: wgpu::Operations {
                     // What to do with colors in previous frame, in this case: Clear to BLACK
-                    load: wgpu::LoadOp::Clear(wgpu::Color::GREEN),
+                    load: wgpu::LoadOp::Clear(color),
                     // Wether to store the render result or not
                     store: true,
                 },
