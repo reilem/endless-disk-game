@@ -1,6 +1,7 @@
 #![cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::Closure;
 use wasm_bindgen::JsCast;
+use winit::dpi::LogicalSize;
 use winit::event_loop::EventLoop;
 use winit::platform::web::WindowExtWebSys;
 use winit::window::Window;
@@ -44,12 +45,25 @@ fn start_web_window() -> (Window, EventLoop<()>) {
     // Start the event loop
     let event_loop = EventLoop::new();
     let window = Window::new(&event_loop).unwrap();
-
     disable_touch_events(&window);
 
+    let web_sys_window = web_sys::window().expect("Failed to get web_sys window");
+    window.set_inner_size(LogicalSize::new(
+        web_sys_window
+            .inner_width()
+            .unwrap_or(wasm_bindgen::JsValue::from(1024))
+            .as_f64()
+            .map_or(1024, |f| f as u32),
+        web_sys_window
+            .inner_height()
+            .unwrap_or(wasm_bindgen::JsValue::from(768))
+            .as_f64()
+            .map_or(768, |f| f as u32),
+    ));
+
     // On wasm, append the canvas to the document body
-    web_sys::window()
-        .and_then(|win| win.document())
+    web_sys_window
+        .document()
         .and_then(|doc| doc.body())
         .and_then(|body| {
             body.append_child(&web_sys::Element::from(window.canvas()))
