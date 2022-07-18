@@ -1,6 +1,7 @@
 #![cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::Closure;
 use wasm_bindgen::JsCast;
+use web_sys::Element;
 use winit::dpi::LogicalSize;
 use winit::event_loop::EventLoop;
 use winit::platform::web::WindowExtWebSys;
@@ -14,61 +15,70 @@ fn init_logs() {
     console_error_panic_hook::set_once();
     // Start the logger if enabled
     #[cfg(feature = "console_log")]
-    console_log::init_with_level(log::Level::Debug).unwrap();
+    console_log::init_with_level(log::Level::Info).unwrap();
 }
 
 /**
  * Prevents weird scrolling issues in mobile web
  */
-fn disable_touch_events(window: &Window) {
-    let canvas = web_sys::Element::from(window.canvas());
+fn disable_touch_events(element: &Element) {
     let closure = Closure::wrap(Box::new(|event: web_sys::Event| {
         event.prevent_default();
     }) as Box<dyn Fn(web_sys::Event)>);
-    canvas
-        .add_event_listener_with_callback("touchstart", closure.as_ref().unchecked_ref())
-        .expect("Failed to add touchstart listener");
-    canvas
-        .add_event_listener_with_callback("touchmove", closure.as_ref().unchecked_ref())
-        .expect("Failed to add touchmove listener");
-    canvas
-        .add_event_listener_with_callback("touchend", closure.as_ref().unchecked_ref())
-        .expect("Failed to add touchend listener");
-    canvas
-        .add_event_listener_with_callback("touchcancel", closure.as_ref().unchecked_ref())
-        .expect("Failed to add touchcancel listener");
+    add_event_listener(&element, "touchstart", &closure);
+    add_event_listener(&element, "touchmove", &closure);
+    add_event_listener(&element, "touchend", &closure);
+    add_event_listener(&element, "touchcancel", &closure);
     // If you don't add this the closure will be destroyed and do nothing
     closure.forget();
+}
+
+// TODO: maybe add this as a trait?
+// ?Sized relaxes the size restriction of this generic type and allows the Closure type to be defined generically
+fn add_event_listener<T: ?Sized>(element: &Element, listener_name: &str, closure: &Closure<T>) {
+    element
+        .add_event_listener_with_callback(listener_name, closure.as_ref().unchecked_ref())
+        .expect(format!("Failed to add {} listener", listener_name).as_str());
+}
+
+fn set_resize_listener(window: &Window, web_window: &web_sys::Window) {
+    resize_window(window, web_window);
+    // let closure = Closure::wrap(Box::new(|event: web_sys::UiEvent| {
+    //     log::info!("{:?}", event);
+    // }) as Box<dyn Fn(web_sys::UiEvent)>);
+    // web_window.set_onresize(Some(closure.as_ref().unchecked_ref()));
+    // closure.forget();
+}
+
+fn resize_window(window: &Window, web_window: &web_sys::Window) {
+    window.set_inner_size(LogicalSize::new(
+        web_window
+            .inner_width()
+            .unwrap_or(wasm_bindgen::JsValue::from(1024))
+            .as_f64()
+            .map_or(1024, |f| f as u32),
+        web_window
+            .inner_height()
+            .unwrap_or(wasm_bindgen::JsValue::from(768))
+            .as_f64()
+            .map_or(768, |f| f as u32),
+    ));
 }
 
 fn start_web_window() -> (Window, EventLoop<()>) {
     // Start the event loop
     let event_loop = EventLoop::new();
     let window = Window::new(&event_loop).unwrap();
-    disable_touch_events(&window);
-
-    let web_sys_window = web_sys::window().expect("Failed to get web_sys window");
-    window.set_inner_size(LogicalSize::new(
-        web_sys_window
-            .inner_width()
-            .unwrap_or(wasm_bindgen::JsValue::from(1024))
-            .as_f64()
-            .map_or(1024, |f| f as u32),
-        web_sys_window
-            .inner_height()
-            .unwrap_or(wasm_bindgen::JsValue::from(768))
-            .as_f64()
-            .map_or(768, |f| f as u32),
-    ));
+    let web_window = web_sys::window().expect("Failed to get web window");
+    let canvas = web_sys::Element::from(window.canvas());
+    disable_touch_events(&canvas);
+    set_resize_listener(&window, &web_window);
 
     // On wasm, append the canvas to the document body
-    web_sys_window
+    web_window
         .document()
         .and_then(|doc| doc.body())
-        .and_then(|body| {
-            body.append_child(&web_sys::Element::from(window.canvas()))
-                .ok()
-        })
+        .and_then(|body| body.append_child(&canvas).ok())
         .expect("couldn't append canvas to document body");
     (window, event_loop)
 }

@@ -100,7 +100,7 @@ const INDICES: &[u16] = &[
 pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
     let mut state = GraphicState::new(&window).await;
 
-    log::debug!("Starting event_loop");
+    log::info!("Starting event_loop");
     event_loop.run(move |event, _, control_flow| {
         // Have the closure take ownership of the resources.
         // `event_loop.run` never returns, therefore we must do this to ensure
