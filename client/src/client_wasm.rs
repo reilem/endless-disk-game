@@ -41,15 +41,6 @@ fn add_event_listener<T: ?Sized>(element: &Element, listener_name: &str, closure
         .expect(format!("Failed to add {} listener", listener_name).as_str());
 }
 
-fn set_resize_listener(window: &Window, web_window: &web_sys::Window) {
-    resize_window(window, web_window);
-    // let closure = Closure::wrap(Box::new(|event: web_sys::UiEvent| {
-    //     log::info!("{:?}", event);
-    // }) as Box<dyn Fn(web_sys::UiEvent)>);
-    // web_window.set_onresize(Some(closure.as_ref().unchecked_ref()));
-    // closure.forget();
-}
-
 fn resize_window(window: &Window, web_window: &web_sys::Window) {
     window.set_inner_size(LogicalSize::new(
         web_window
@@ -72,7 +63,7 @@ fn start_web_window() -> (Window, EventLoop<()>) {
     let web_window = web_sys::window().expect("Failed to get web window");
     let canvas = web_sys::Element::from(window.canvas());
     disable_touch_events(&canvas);
-    set_resize_listener(&window, &web_window);
+    resize_window(&window, &web_window);
 
     // On wasm, append the canvas to the document body
     web_window
