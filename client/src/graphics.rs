@@ -54,14 +54,32 @@ impl Vertex {
     }
 }
 
-const SQUARE_SIZE: f32 = 96.0;
+const SQUARE_SIZE: f32 = 128.0;
 
 // y should be (1 - y) because all texture y coordinates are flipped
 // (1,1) in bottom right
 // (0,0) in top left
 const VERTICES: &[Vertex] = &[
+    // Square bottom-left
     Vertex {
         position: [-1.0, -1.0],
+        tex_coords: [0.0, 1.0],
+    }, // bottom-left
+    Vertex {
+        position: [0.0, -1.0],
+        tex_coords: [0.3333, 1.0],
+    }, // bottom-right
+    Vertex {
+        position: [0.0, 0.0],
+        tex_coords: [0.3333, 0.0],
+    }, // top-right
+    Vertex {
+        position: [-1.0, 0.0],
+        tex_coords: [0.0, 0.0],
+    }, // top-left
+    // Square bottom-right
+    Vertex {
+        position: [0.0, -1.0],
         tex_coords: [0.0, 1.0],
     }, // bottom-left
     Vertex {
@@ -69,7 +87,41 @@ const VERTICES: &[Vertex] = &[
         tex_coords: [0.3333, 1.0],
     }, // bottom-right
     Vertex {
+        position: [1.0, 0.0],
+        tex_coords: [0.3333, 0.0],
+    }, // top-right
+    Vertex {
+        position: [0.0, 0.0],
+        tex_coords: [0.0, 0.0],
+    }, // top-left
+    // Square top-right
+    Vertex {
+        position: [0.0, 0.0],
+        tex_coords: [0.0, 1.0],
+    }, // bottom-left
+    Vertex {
+        position: [1.0, 0.0],
+        tex_coords: [0.3333, 1.0],
+    }, // bottom-right
+    Vertex {
         position: [1.0, 1.0],
+        tex_coords: [0.3333, 0.0],
+    }, // top-right
+    Vertex {
+        position: [0.0, 1.0],
+        tex_coords: [0.0, 0.0],
+    }, // top-left
+    // Square top-left
+    Vertex {
+        position: [-1.0, 0.0],
+        tex_coords: [0.0, 1.0],
+    }, // bottom-left
+    Vertex {
+        position: [0.0, 0.0],
+        tex_coords: [0.3333, 1.0],
+    }, // bottom-right
+    Vertex {
+        position: [0.0, 1.0],
         tex_coords: [0.3333, 0.0],
     }, // top-right
     Vertex {
@@ -79,8 +131,18 @@ const VERTICES: &[Vertex] = &[
 ];
 
 const INDICES: &[u16] = &[
-    0, 1, 3, // Triangle bottom left
-    1, 2, 3, // Triangle top right
+    // Square top-left
+    0, 1, 3, // triangle bottom left
+    1, 2, 3, // triangle top right
+    // Square bottom-right
+    4, 5, 7, // triangle bottom left
+    5, 6, 7, // triangle top right
+    // Square top-right
+    8, 9, 11, // triangle bottom left
+    9, 10, 11, // triangle top right
+    // Square bottom-left
+    12, 13, 15, // triangle bottom left
+    13, 14, 15, // triangle top right
 ];
 
 pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
@@ -526,11 +588,13 @@ fn init_index_buffer(device: &wgpu::Device) -> wgpu::Buffer {
 fn init_projection_matrix_buffer(device: &wgpu::Device, size: &PhysicalSize<u32>) -> wgpu::Buffer {
     let scale_x = (2.0 * SQUARE_SIZE) / (size.width as f32);
     let scale_y = (2.0 * SQUARE_SIZE) / (size.height as f32);
+    let transform_x = 0.0; //-1.0 * scale_x;
+    let transform_y = 0.0; // -1.0 * scale_y;
     let projection_matrix = [
         [scale_x, 0.0, 0.0, 0.0],
         [0.0, scale_y, 0.0, 0.0],
         [0.0, 0.0, 1.0, 0.0],
-        [0.0, 0.0, 0.0, 1.0],
+        [transform_x, transform_y, 0.0, 1.0],
     ];
     device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("Main projection matrix buffer"),
