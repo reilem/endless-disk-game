@@ -56,6 +56,10 @@ impl Vertex {
 
 const SQUARE_SIZE: f32 = 128.0;
 
+// TODO: Consider making the entire grid uneven instead of even:
+//       Since we are always going to want a square in the "middle" as starting position, there will always need to be an uneven amount
+//       of squares to render it. If we force even numbers we will need to have double the amount of redundant squares.
+//       Not sure though, experiment with this a little (don't forget to use the uneven transformation if going this route)
 // y should be (1 - y) because all texture y coordinates are flipped
 // (1,1) in bottom right
 // (0,0) in top left
