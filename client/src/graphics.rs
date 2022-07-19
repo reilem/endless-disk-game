@@ -34,13 +34,13 @@ struct GraphicState {
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct Vertex {
-    position: [f32; 3],
+    position: [f32; 2],
     tex_coords: [f32; 2],
 }
 
 impl Vertex {
     const ATTRIBS: [wgpu::VertexAttribute; 2] =
-        wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2];
+        wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2];
     // This tells the render_pipeline how to read the buffer
     // Since the buffer is an array of bytes it will need to be told how to handle those bytes
     fn buffer_layout_description<'a>() -> wgpu::VertexBufferLayout<'a> {
@@ -48,20 +48,6 @@ impl Vertex {
             array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress, // The size of each vertex in bytes
             step_mode: wgpu::VertexStepMode::Vertex, // Go over each one vertex-by-vertex
             attributes: &Self::ATTRIBS,
-            // More verbose way:
-            // attributes: &[
-            //     // Describe the meaning of each struct field
-            //     wgpu::VertexAttribute {
-            //         offset: 0,
-            //         shader_location: 0, // Corresponds to `@location(x)` in WGSL shader
-            //         format: wgpu::VertexFormat::Float32x3, // 3 floats = size of position field
-            //     },
-            //     wgpu::VertexAttribute {
-            //         offset: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress, // Give it an offset corresponding to position field
-            //         shader_location: 1,
-            //         format: wgpu::VertexFormat::Float32x3, // 3 floats = size of color field
-            //     },
-            // ],
         }
     }
 }
@@ -70,19 +56,19 @@ impl Vertex {
 // (0,0) in top left
 const VERTICES: &[Vertex] = &[
     Vertex {
-        position: [-1.0, -1.0, 0.0],
+        position: [-1.0, -1.0],
         tex_coords: [0.0, 1.0],
     }, // bottom-left
     Vertex {
-        position: [1.0, -1.0, 0.0],
-        tex_coords: [1.0, 1.0],
+        position: [1.0, -1.0],
+        tex_coords: [0.334, 1.0],
     }, // bottom-right
     Vertex {
-        position: [1.0, 1.0, 0.0],
-        tex_coords: [1.0, 0.0],
+        position: [1.0, 1.0],
+        tex_coords: [0.334, 0.0],
     }, // top-right
     Vertex {
-        position: [-1.0, 1.0, 0.0],
+        position: [-1.0, 1.0],
         tex_coords: [0.0, 0.0],
     }, // top-left
 ];
@@ -333,7 +319,7 @@ fn init_texture(
 ) -> (wgpu::BindGroup, wgpu::BindGroupLayout) {
     // TODO: Consider loading in images differently on desktop vs wasm
     // Load in bytes from file
-    let diffuse_bytes = include_bytes!("textures/happy-tree.png");
+    let diffuse_bytes = include_bytes!("textures/atlas-1.png");
     // Turn the bytes into an image
     let diffuse_image = image::load_from_memory(diffuse_bytes).expect("Failed to load image");
     // Get Vec of rgba bytes
