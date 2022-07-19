@@ -29,7 +29,8 @@ struct GraphicState {
     index_buffer: wgpu::Buffer,
     index_count: u32,
     diffuse_bind_group: wgpu::BindGroup,
-    projection_matrix_bind_group: wgpu::BindGroup,
+    projection_bind_group: wgpu::BindGroup,
+    projection_bind_group_layout: wgpu::BindGroupLayout,
 }
 
 #[repr(C)]
@@ -141,14 +142,15 @@ impl GraphicState {
         // Create texture bind group
         let (diffuse_bind_group, diffuse_bind_group_layout) = init_texture(&device, &queue);
         // Create projection matrix buffer
-        let (projection_matrix_bind_group, projection_matrix_bind_group_layout) =
-            init_projection_matrix_bind_group(&device, &size);
+        let projection_bind_group_layout = init_projection_bind_group_layout(&device);
+        let projection_bind_group =
+            init_projection_bind_group(&device, &size, &projection_bind_group_layout);
         // Create render pipeline
         let render_pipeline = init_render_pipeline(
             &device,
             &config,
             &diffuse_bind_group_layout,
-            &projection_matrix_bind_group_layout,
+            &projection_bind_group_layout,
         );
         // Create vertex buffer
         let vertex_buffer = init_vertex_buffer(&device);
@@ -167,7 +169,8 @@ impl GraphicState {
             index_buffer,
             index_count: INDICES.len() as u32,
             diffuse_bind_group,
-            projection_matrix_bind_group,
+            projection_bind_group,
+            projection_bind_group_layout,
         }
     }
 
@@ -190,6 +193,11 @@ impl GraphicState {
             self.config.width = new_size.width;
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
+            self.projection_bind_group = init_projection_bind_group(
+                &self.device,
+                &self.size,
+                &self.projection_bind_group_layout,
+            );
             // TODO: recreate projection matrix
             // On macos the window needs to be redrawn manually after resizing
             window.request_redraw();
@@ -250,7 +258,7 @@ impl GraphicState {
             // Set the texture bind group
             rpass.set_bind_group(0, &self.diffuse_bind_group, &[]);
             // Set the projection matrix bind group
-            rpass.set_bind_group(1, &self.projection_matrix_bind_group, &[]);
+            rpass.set_bind_group(1, &self.projection_bind_group, &[]);
             // Set the vertex buffer
             rpass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             // Set the index buffer
@@ -448,17 +456,14 @@ fn init_render_pipeline(
     device: &wgpu::Device,
     config: &SurfaceConfiguration,
     diffuse_bind_group_layout: &wgpu::BindGroupLayout,
-    projection_matrix_bind_group_layout: &wgpu::BindGroupLayout,
+    projection_bind_group_layout: &wgpu::BindGroupLayout,
 ) -> wgpu::RenderPipeline {
     // Load in the wgsl shader
     let shader = device.create_shader_module(include_wgsl!("shaders/tutorial.wgsl"));
     // Set pipeline layout
     let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
         label: Some("Main render pipeline layout"),
-        bind_group_layouts: &[
-            diffuse_bind_group_layout,
-            projection_matrix_bind_group_layout,
-        ],
+        bind_group_layouts: &[diffuse_bind_group_layout, projection_bind_group_layout],
         push_constant_ranges: &[],
     });
     // Create render pipeline
@@ -534,12 +539,8 @@ fn init_projection_matrix_buffer(device: &wgpu::Device, size: &PhysicalSize<u32>
     })
 }
 
-fn init_projection_matrix_bind_group(
-    device: &Device,
-    size: &PhysicalSize<u32>,
-) -> (wgpu::BindGroup, wgpu::BindGroupLayout) {
-    let projection_matrix_buffer = init_projection_matrix_buffer(&device, &size);
-    let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+fn init_projection_bind_group_layout(device: &Device) -> wgpu::BindGroupLayout {
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         entries: &[wgpu::BindGroupLayoutEntry {
             binding: 0,
             visibility: wgpu::ShaderStages::VERTEX,
@@ -551,14 +552,21 @@ fn init_projection_matrix_bind_group(
             count: None,
         }],
         label: Some("Projection matrix bind group layout"),
-    });
-    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        layout: &bind_group_layout,
+    })
+}
+
+fn init_projection_bind_group(
+    device: &Device,
+    size: &PhysicalSize<u32>,
+    layout: &wgpu::BindGroupLayout,
+) -> wgpu::BindGroup {
+    let projection_matrix_buffer = init_projection_matrix_buffer(&device, &size);
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        layout: &layout,
         entries: &[wgpu::BindGroupEntry {
             binding: 0,
             resource: projection_matrix_buffer.as_entire_binding(),
         }],
         label: Some("Project matrix bind group"),
-    });
-    (bind_group, bind_group_layout)
+    })
 }
