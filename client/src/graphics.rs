@@ -29,18 +29,20 @@ struct GraphicState {
     index_buffer: wgpu::Buffer,
     index_count: u32,
     diffuse_bind_group: wgpu::BindGroup,
+    projection_bind_group: wgpu::BindGroup,
+    projection_bind_group_layout: wgpu::BindGroupLayout,
 }
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct Vertex {
-    position: [f32; 3],
+    position: [f32; 2],
     tex_coords: [f32; 2],
 }
 
 impl Vertex {
     const ATTRIBS: [wgpu::VertexAttribute; 2] =
-        wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2];
+        wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2];
     // This tells the render_pipeline how to read the buffer
     // Since the buffer is an array of bytes it will need to be told how to handle those bytes
     fn buffer_layout_description<'a>() -> wgpu::VertexBufferLayout<'a> {
@@ -48,66 +50,116 @@ impl Vertex {
             array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress, // The size of each vertex in bytes
             step_mode: wgpu::VertexStepMode::Vertex, // Go over each one vertex-by-vertex
             attributes: &Self::ATTRIBS,
-            // More verbose way:
-            // attributes: &[
-            //     // Describe the meaning of each struct field
-            //     wgpu::VertexAttribute {
-            //         offset: 0,
-            //         shader_location: 0, // Corresponds to `@location(x)` in WGSL shader
-            //         format: wgpu::VertexFormat::Float32x3, // 3 floats = size of position field
-            //     },
-            //     wgpu::VertexAttribute {
-            //         offset: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress, // Give it an offset corresponding to position field
-            //         shader_location: 1,
-            //         format: wgpu::VertexFormat::Float32x3, // 3 floats = size of color field
-            //     },
-            // ],
         }
     }
 }
+
+const SQUARE_SIZE: f32 = 128.0;
+
+// TODO: Consider making the entire grid uneven instead of even:
+//       Since we are always going to want a square in the "middle" as starting position, there will always need to be an uneven amount
+//       of squares to render it. If we force even numbers we will need to have double the amount of redundant squares.
+//       Not sure though, experiment with this a little (don't forget to use the uneven transformation if going this route)
 // y should be (1 - y) because all texture y coordinates are flipped
 // (1,1) in bottom right
 // (0,0) in top left
 const VERTICES: &[Vertex] = &[
+    // Square bottom-left
     Vertex {
-        position: [-0.0868241, 0.49240386, 0.0],
-        tex_coords: [0.4131759, 1.0 - 0.99240386],
-    }, // A
+        position: [-1.0, -1.0],
+        tex_coords: [0.0, 1.0],
+    }, // bottom-left
     Vertex {
-        position: [-0.49513406, 0.06958647, 0.0],
-        tex_coords: [0.0048659444, 1.0 - 0.56958647],
-    }, // B
+        position: [0.0, -1.0],
+        tex_coords: [0.3333, 1.0],
+    }, // bottom-right
     Vertex {
-        position: [-0.21918549, -0.44939706, 0.0],
-        tex_coords: [0.28081453, 1.0 - 0.05060294],
-    }, // C
+        position: [0.0, 0.0],
+        tex_coords: [0.3333, 0.0],
+    }, // top-right
     Vertex {
-        position: [0.35966998, -0.3473291, 0.0],
-        tex_coords: [0.85967, 1.0 - 0.1526709],
-    }, // D
+        position: [-1.0, 0.0],
+        tex_coords: [0.0, 0.0],
+    }, // top-left
+    // Square bottom-right
     Vertex {
-        position: [0.44147372, 0.2347359, 0.0],
-        tex_coords: [0.9414737, 1.0 - 0.7347359],
-    }, // E
+        position: [0.0, -1.0],
+        tex_coords: [0.0, 1.0],
+    }, // bottom-left
+    Vertex {
+        position: [1.0, -1.0],
+        tex_coords: [0.3333, 1.0],
+    }, // bottom-right
+    Vertex {
+        position: [1.0, 0.0],
+        tex_coords: [0.3333, 0.0],
+    }, // top-right
+    Vertex {
+        position: [0.0, 0.0],
+        tex_coords: [0.0, 0.0],
+    }, // top-left
+    // Square top-right
+    Vertex {
+        position: [0.0, 0.0],
+        tex_coords: [0.0, 1.0],
+    }, // bottom-left
+    Vertex {
+        position: [1.0, 0.0],
+        tex_coords: [0.3333, 1.0],
+    }, // bottom-right
+    Vertex {
+        position: [1.0, 1.0],
+        tex_coords: [0.3333, 0.0],
+    }, // top-right
+    Vertex {
+        position: [0.0, 1.0],
+        tex_coords: [0.0, 0.0],
+    }, // top-left
+    // Square top-left
+    Vertex {
+        position: [-1.0, 0.0],
+        tex_coords: [0.0, 1.0],
+    }, // bottom-left
+    Vertex {
+        position: [0.0, 0.0],
+        tex_coords: [0.3333, 1.0],
+    }, // bottom-right
+    Vertex {
+        position: [0.0, 1.0],
+        tex_coords: [0.3333, 0.0],
+    }, // top-right
+    Vertex {
+        position: [-1.0, 1.0],
+        tex_coords: [0.0, 0.0],
+    }, // top-left
 ];
 
 const INDICES: &[u16] = &[
-    0, 1, 4, // Triangle 1
-    1, 2, 4, // Triangle 2
-    2, 3, 4, // Triangle 3
+    // Square top-left
+    0, 1, 3, // triangle bottom left
+    1, 2, 3, // triangle top right
+    // Square bottom-right
+    4, 5, 7, // triangle bottom left
+    5, 6, 7, // triangle top right
+    // Square top-right
+    8, 9, 11, // triangle bottom left
+    9, 10, 11, // triangle top right
+    // Square bottom-left
+    12, 13, 15, // triangle bottom left
+    13, 14, 15, // triangle top right
 ];
 
 pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
     let mut state = GraphicState::new(&window).await;
 
-    log::debug!("Starting event_loop");
+    log::info!("Starting event_loop");
     event_loop.run(move |event, _, control_flow| {
         // Have the closure take ownership of the resources.
         // `event_loop.run` never returns, therefore we must do this to ensure
         // the resources are properly cleaned up.
         let _ = &state;
 
-        *control_flow = ControlFlow::Wait;
+        *control_flow = ControlFlow::Wait; // Note: Setting this to ::Poll will run this as a game loop
         match event {
             Event::WindowEvent {
                 event, window_id, ..
@@ -155,8 +207,17 @@ impl GraphicState {
         surface.configure(&device, &config);
         // Create texture bind group
         let (diffuse_bind_group, diffuse_bind_group_layout) = init_texture(&device, &queue);
+        // Create projection matrix buffer
+        let projection_bind_group_layout = init_projection_bind_group_layout(&device);
+        let projection_bind_group =
+            init_projection_bind_group(&device, &size, &projection_bind_group_layout);
         // Create render pipeline
-        let render_pipeline = init_render_pipeline(&device, &config, &diffuse_bind_group_layout);
+        let render_pipeline = init_render_pipeline(
+            &device,
+            &config,
+            &diffuse_bind_group_layout,
+            &projection_bind_group_layout,
+        );
         // Create vertex buffer
         let vertex_buffer = init_vertex_buffer(&device);
         // Create index buffer
@@ -174,6 +235,8 @@ impl GraphicState {
             index_buffer,
             index_count: INDICES.len() as u32,
             diffuse_bind_group,
+            projection_bind_group,
+            projection_bind_group_layout,
         }
     }
 
@@ -196,6 +259,12 @@ impl GraphicState {
             self.config.width = new_size.width;
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
+            self.projection_bind_group = init_projection_bind_group(
+                &self.device,
+                &self.size,
+                &self.projection_bind_group_layout,
+            );
+            // TODO: recreate projection matrix
             // On macos the window needs to be redrawn manually after resizing
             window.request_redraw();
         }
@@ -254,6 +323,8 @@ impl GraphicState {
             rpass.set_pipeline(&self.render_pipeline);
             // Set the texture bind group
             rpass.set_bind_group(0, &self.diffuse_bind_group, &[]);
+            // Set the projection matrix bind group
+            rpass.set_bind_group(1, &self.projection_bind_group, &[]);
             // Set the vertex buffer
             rpass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             // Set the index buffer
@@ -338,7 +409,7 @@ fn init_texture(
 ) -> (wgpu::BindGroup, wgpu::BindGroupLayout) {
     // TODO: Consider loading in images differently on desktop vs wasm
     // Load in bytes from file
-    let diffuse_bytes = include_bytes!("textures/happy-tree.png");
+    let diffuse_bytes = include_bytes!("textures/atlas-1.png");
     // Turn the bytes into an image
     let diffuse_image = image::load_from_memory(diffuse_bytes).expect("Failed to load image");
     // Get Vec of rgba bytes
@@ -405,11 +476,13 @@ fn init_texture(
                     binding: 0,
                     // Only visible to fragment shader
                     visibility: wgpu::ShaderStages::FRAGMENT,
+                    // Type of binding
                     ty: wgpu::BindingType::Texture {
                         sample_type: wgpu::TextureSampleType::Float { filterable: true },
                         view_dimension: wgpu::TextureViewDimension::D2,
                         multisampled: false,
                     },
+                    // If Some = Indicates that this entry is an array or a TEXTURE_BINDING_ARRAY
                     count: None,
                 },
                 wgpu::BindGroupLayoutEntry {
@@ -449,13 +522,14 @@ fn init_render_pipeline(
     device: &wgpu::Device,
     config: &SurfaceConfiguration,
     diffuse_bind_group_layout: &wgpu::BindGroupLayout,
+    projection_bind_group_layout: &wgpu::BindGroupLayout,
 ) -> wgpu::RenderPipeline {
     // Load in the wgsl shader
     let shader = device.create_shader_module(include_wgsl!("shaders/tutorial.wgsl"));
     // Set pipeline layout
     let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
         label: Some("Main render pipeline layout"),
-        bind_group_layouts: &[diffuse_bind_group_layout],
+        bind_group_layouts: &[diffuse_bind_group_layout, projection_bind_group_layout],
         push_constant_ranges: &[],
     });
     // Create render pipeline
@@ -475,9 +549,9 @@ fn init_render_pipeline(
             module: &shader,
             entry_point: "fs_main", // Entrypoint fragment shader function inside shader
             targets: &[Some(wgpu::ColorTargetState {
-                format: config.format,                  // Use the surface's format
-                blend: Some(wgpu::BlendState::REPLACE), // Replace all colors
-                write_mask: wgpu::ColorWrites::ALL,     // Write to all channels (r,g,b,a)
+                format: config.format,                         // Use the surface's format
+                blend: Some(wgpu::BlendState::ALPHA_BLENDING), // Replace all colors
+                write_mask: wgpu::ColorWrites::ALL,            // Write to all channels (r,g,b,a)
             })],
         }),
         primitive: wgpu::PrimitiveState {
@@ -512,5 +586,55 @@ fn init_index_buffer(device: &wgpu::Device) -> wgpu::Buffer {
         label: Some("Main index buffer"),
         contents: bytemuck::cast_slice(&INDICES),
         usage: wgpu::BufferUsages::INDEX,
+    })
+}
+
+fn init_projection_matrix_buffer(device: &wgpu::Device, size: &PhysicalSize<u32>) -> wgpu::Buffer {
+    let scale_x = (2.0 * SQUARE_SIZE) / (size.width as f32);
+    let scale_y = (2.0 * SQUARE_SIZE) / (size.height as f32);
+    let transform_x = 0.0; //-1.0 * scale_x;
+    let transform_y = 0.0; // -1.0 * scale_y;
+    let projection_matrix = [
+        [scale_x, 0.0, 0.0, 0.0],
+        [0.0, scale_y, 0.0, 0.0],
+        [0.0, 0.0, 1.0, 0.0],
+        [transform_x, transform_y, 0.0, 1.0],
+    ];
+    device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Main projection matrix buffer"),
+        contents: bytemuck::cast_slice(&projection_matrix),
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+    })
+}
+
+fn init_projection_bind_group_layout(device: &Device) -> wgpu::BindGroupLayout {
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        entries: &[wgpu::BindGroupLayoutEntry {
+            binding: 0,
+            visibility: wgpu::ShaderStages::VERTEX,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        }],
+        label: Some("Projection matrix bind group layout"),
+    })
+}
+
+fn init_projection_bind_group(
+    device: &Device,
+    size: &PhysicalSize<u32>,
+    layout: &wgpu::BindGroupLayout,
+) -> wgpu::BindGroup {
+    let projection_matrix_buffer = init_projection_matrix_buffer(&device, &size);
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        layout: &layout,
+        entries: &[wgpu::BindGroupEntry {
+            binding: 0,
+            resource: projection_matrix_buffer.as_entire_binding(),
+        }],
+        label: Some("Project matrix bind group"),
     })
 }
