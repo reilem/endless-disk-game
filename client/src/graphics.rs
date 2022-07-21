@@ -538,22 +538,31 @@ fn grid_range_end(square_count: f32, offset: f32) -> i32 {
 }
 
 fn vertices_for_coords(x: f32, y: f32) -> Vec<Vertex> {
+    let is_mid = x == 0.0 && y == 0.0;
     Vec::from([
         Vertex {
             position: [x, y],
-            tex_coords: [0.0, 1.0],
+            tex_coords: if is_mid { [0.0, 0.0] } else { [0.0, 1.0] },
         },
         Vertex {
             position: [x + 1.0, y],
-            tex_coords: [0.33333, 1.0],
+            tex_coords: if is_mid {
+                [0.33333, 0.0]
+            } else {
+                [0.33333, 1.0]
+            },
         },
         Vertex {
             position: [x + 1.0, y + 1.0],
-            tex_coords: [0.33333, 0.0],
+            tex_coords: if is_mid {
+                [0.33333, 1.0]
+            } else {
+                [0.33333, 0.0]
+            },
         },
         Vertex {
             position: [x, y + 1.0],
-            tex_coords: [0.0, 0.0],
+            tex_coords: if is_mid { [0.0, 1.0] } else { [0.0, 0.0] },
         },
     ])
 }
