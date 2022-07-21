@@ -65,12 +65,13 @@ impl Vertex {
 
 const SQUARE_SIZE: f32 = 128.0;
 const UPDATE_TIME: u128 = (1000.0 as f64 / 60.0 as f64) as u128;
-const SPEED: f64 = 0.05;
+const SPEED: f64 = 0.04;
 
 pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
     let mut state = GraphicState::new(&window).await;
 
     log::info!("Starting event_loop");
+    // TODO: Fix this using 100% CPU (maybe just a debug thing though)
     event_loop.run(move |event, _, control_flow| {
         // Have the closure take ownership of the resources.
         // `event_loop.run` never returns, therefore we must do this to ensure
@@ -144,7 +145,7 @@ impl GraphicState {
         // Create projection matrix buffer
         let projection_bind_group_layout = init_projection_bind_group_layout(&device);
         let projection_bind_group =
-            init_projection_bind_group(&device, &size, &projection_bind_group_layout);
+            init_projection_bind_group(&device, &size, &player, &projection_bind_group_layout);
         // Create render pipeline
         let render_pipeline = init_render_pipeline(
             &device,
@@ -172,19 +173,13 @@ impl GraphicState {
             diffuse_bind_group,
             projection_bind_group,
             projection_bind_group_layout,
-            last_update: Instant::now(),
+            last_update: Instant::now(), // TODO: std::time does not work in wasm, find an alternative
         }
     }
 
     fn update(&mut self, window: &Window) {
         let time_elapsed = self.last_update.elapsed().as_millis();
         if time_elapsed >= UPDATE_TIME {
-            log::info!(
-                "Updating: {:?}, time elapsed: {}, player: {:?}",
-                self.pressed_keys,
-                time_elapsed,
-                self.player,
-            );
             for key in self.pressed_keys.iter() {
                 match key {
                     VirtualKeyCode::Left => self.player.x -= SPEED,
@@ -195,7 +190,7 @@ impl GraphicState {
                 }
             }
             if self.pressed_keys.len() > 0 {
-                self.refresh_vertex_index_buffer();
+                self.refresh_buffers();
                 window.request_redraw();
             }
             self.last_update = Instant::now();
@@ -229,18 +224,21 @@ impl GraphicState {
             self.config.width = new_size.width;
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
-            self.projection_bind_group = init_projection_bind_group(
-                &self.device,
-                &self.size,
-                &self.projection_bind_group_layout,
-            );
-            self.refresh_vertex_index_buffer();
+            self.refresh_buffers();
             // On macos the window needs to be redrawn manually after resizing
             window.request_redraw();
         }
     }
 
-    fn refresh_vertex_index_buffer(&mut self) {
+    fn refresh_buffers(&mut self) {
+        // TODO: recreating all bind groups & buffers is probably very inefficient, find a better way
+        // Currently this is causing frame drops
+        self.projection_bind_group = init_projection_bind_group(
+            &self.device,
+            &self.size,
+            &self.player,
+            &self.projection_bind_group_layout,
+        );
         (self.vertex_buffer, self.index_buffer, self.index_count) =
             init_vertex_index_buffer(&self.device, &self.size, &self.player);
     }
@@ -697,10 +695,10 @@ fn init_vertex_index_buffer(
     let horizontal_len = number_of_squares_horionztally(&size) as f32;
     let vertical_len = number_of_squares_vertically(&size) as f32;
 
-    let y_start = grid_range_start(vertical_len, 0.0);
-    let y_end = grid_range_end(vertical_len, 0.0);
-    let x_start = grid_range_start(horizontal_len, 0.0);
-    let x_end = grid_range_end(horizontal_len, 0.0);
+    let y_start = grid_range_start(vertical_len, player.y as f32);
+    let y_end = grid_range_end(vertical_len, player.y as f32);
+    let x_start = grid_range_start(horizontal_len, player.x as f32);
+    let x_end = grid_range_end(horizontal_len, player.x as f32);
 
     // Add world ground grid
     let mut index = 0;
@@ -776,11 +774,15 @@ fn init_vertex_index_buffer(
  * entire grid by half a square to the left and half a square down. This ensures that the center square is presented in the middle of
  * the screen.
  */
-fn init_projection_matrix_buffer(device: &wgpu::Device, size: &WindowSize) -> wgpu::Buffer {
+fn init_projection_matrix_buffer(
+    device: &wgpu::Device,
+    size: &WindowSize,
+    player: &Position,
+) -> wgpu::Buffer {
     let scale_x = (2.0 * SQUARE_SIZE) / (size.width as f32);
     let scale_y = (2.0 * SQUARE_SIZE) / (size.height as f32);
-    let transform_x = scale_x / -2.0;
-    let transform_y = scale_y / -2.0;
+    let transform_x = scale_x / -2.0 - (scale_x * player.x as f32);
+    let transform_y = scale_y / -2.0 - (scale_y * player.y as f32);
     let projection_matrix = [
         [scale_x, 0.0, 0.0, 0.0],
         [0.0, scale_y, 0.0, 0.0],
@@ -813,9 +815,10 @@ fn init_projection_bind_group_layout(device: &Device) -> wgpu::BindGroupLayout {
 fn init_projection_bind_group(
     device: &Device,
     size: &WindowSize,
+    player: &Position,
     layout: &wgpu::BindGroupLayout,
 ) -> wgpu::BindGroup {
-    let projection_matrix_buffer = init_projection_matrix_buffer(&device, &size);
+    let projection_matrix_buffer = init_projection_matrix_buffer(device, size, player);
     device.create_bind_group(&wgpu::BindGroupDescriptor {
         layout: &layout,
         entries: &[wgpu::BindGroupEntry {
