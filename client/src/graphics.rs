@@ -15,14 +15,15 @@ type WindowPosition = PhysicalPosition<f64>;
 // TODO: Refactor this into multiple files
 // Keeping as-is for now to make sure that when we do the division we have all the information required
 
-struct CursorPosition {
+struct Position {
     x: f64,
     y: f64,
 }
 
 struct GraphicState {
     size: WindowSize,
-    cursor: CursorPosition,
+    cursor: Position,
+    player: Position, // TODO: this needs to be extracted since it is not at all graphics related
     surface: wgpu::Surface,
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -105,6 +106,7 @@ impl GraphicState {
      * INITIALISATION STUFF
      */
     async fn new(window: &Window) -> Self {
+        let player = Position { x: 0.0, y: 0.0 };
         // Create size, instance, surface & adapter
         let (size, surface, adapter) = init_adapter(&window).await;
         // Create the logical device and command queue
@@ -129,11 +131,13 @@ impl GraphicState {
             &projection_bind_group_layout,
         );
         // Create vertex buffer
-        let (vertex_buffer, index_buffer, index_count) = init_vertex_index_buffer(&device, &size);
+        let (vertex_buffer, index_buffer, index_count) =
+            init_vertex_index_buffer(&device, &size, &player);
 
         GraphicState {
             size,
-            cursor: CursorPosition { x: 0.0, y: 0.0 },
+            cursor: Position { x: 0.0, y: 0.0 },
+            player,
             surface,
             device,
             queue,
@@ -173,7 +177,7 @@ impl GraphicState {
                 &self.projection_bind_group_layout,
             );
             (self.vertex_buffer, self.index_buffer, self.index_count) =
-                init_vertex_index_buffer(&self.device, &self.size);
+                init_vertex_index_buffer(&self.device, &self.size, &self.player);
             // On macos the window needs to be redrawn manually after resizing
             window.request_redraw();
         }
@@ -537,32 +541,53 @@ fn grid_range_end(square_count: f32, offset: f32) -> i32 {
     (square_count / 2.0).floor() as i32 + offset.ceil() as i32 + 1
 }
 
-fn vertices_for_coords(x: f32, y: f32) -> Vec<Vertex> {
-    let is_mid = x == 0.0 && y == 0.0;
+fn texture_coords(index: u16) -> [[f32; 2]; 4] {
+    let tex_width = 1.0 / 3.0;
+    let tex_start = (index as f32) * tex_width;
+    let tex_end = tex_start + (1.0 * tex_width);
+    return [
+        [tex_start, 1.0],
+        [tex_end, 1.0],
+        [tex_end, 0.0],
+        [tex_start, 0.0],
+    ];
+}
+
+fn vertices_for_coords(x: f32, y: f32, tex_index: u16) -> Vec<Vertex> {
+    let is_mid_ground = x == 0.0 && y == 0.0 && tex_index == 0;
+    let tex_coords = texture_coords(tex_index);
     Vec::from([
         Vertex {
             position: [x, y],
-            tex_coords: if is_mid { [0.0, 0.0] } else { [0.0, 1.0] },
+            tex_coords: if is_mid_ground {
+                tex_coords[1]
+            } else {
+                tex_coords[0]
+            },
         },
         Vertex {
             position: [x + 1.0, y],
-            tex_coords: if is_mid {
-                [0.33333, 0.0]
+            tex_coords: if is_mid_ground {
+                tex_coords[2]
             } else {
-                [0.33333, 1.0]
+                tex_coords[1]
             },
         },
         Vertex {
             position: [x + 1.0, y + 1.0],
-            tex_coords: if is_mid {
-                [0.33333, 1.0]
+            tex_coords: if is_mid_ground {
+                tex_coords[3]
             } else {
-                [0.33333, 0.0]
+                tex_coords[2]
             },
         },
         Vertex {
             position: [x, y + 1.0],
-            tex_coords: if is_mid { [0.0, 1.0] } else { [0.0, 0.0] },
+            tex_coords: if is_mid_ground {
+                tex_coords[0]
+            } else {
+                tex_coords[3]
+            },
         },
     ])
 }
@@ -572,10 +597,38 @@ fn indices_for_index(index: u16, offset: u16) -> Vec<u16> {
     Vec::from([i, i + 1, i + 3, i + 1, i + 2, i + 3])
 }
 
+// NOTE: this function is just a temp fix to make the rest of the code more readable
+fn add_int_square(
+    vertices: &mut Vec<Vertex>,
+    indices: &mut Vec<u16>,
+    index: &mut u16,
+    x: i32,
+    y: i32,
+    tex_index: u16,
+) {
+    add_square(vertices, indices, index, x as f64, y as f64, tex_index)
+}
+
+fn add_square(
+    vertices: &mut Vec<Vertex>,
+    indices: &mut Vec<u16>,
+    index: &mut u16,
+    x: f64,
+    y: f64,
+    tex_index: u16,
+) {
+    let mut next_vertices = vertices_for_coords(x as f32, y as f32, tex_index);
+    let vertex_count = next_vertices.len() as u16;
+    vertices.append(&mut next_vertices);
+    indices.append(&mut indices_for_index(*index, vertex_count).to_vec());
+    *index += 1;
+}
+
 // TODO: Get rid of all these tuple returns and make sure it returns a proper struct instead to avoid confusion
 fn init_vertex_index_buffer(
     device: &wgpu::Device,
     size: &WindowSize,
+    player: &Position,
 ) -> (wgpu::Buffer, wgpu::Buffer, u32) {
     let mut vertices: Vec<Vertex> = Vec::new();
     let mut indices: Vec<u16> = Vec::new();
@@ -587,16 +640,27 @@ fn init_vertex_index_buffer(
     let x_start = grid_range_start(horizontal_len, 0.0);
     let x_end = grid_range_end(horizontal_len, 0.0);
 
+    // Add world ground grid
     let mut index = 0;
     for y in y_start..y_end {
         for x in x_start..x_end {
-            let mut next_vertices = vertices_for_coords(x as f32, y as f32);
-            let vertex_count = next_vertices.len() as u16;
-            vertices.append(&mut next_vertices);
-            indices.append(&mut indices_for_index(index, vertex_count).to_vec());
-            index += 1;
+            add_int_square(&mut vertices, &mut indices, &mut index, x, y, 0);
         }
     }
+    // Add static world objects
+    add_int_square(&mut vertices, &mut indices, &mut index, 2, -1, 1);
+    add_int_square(&mut vertices, &mut indices, &mut index, -3, 2, 1);
+    add_int_square(&mut vertices, &mut indices, &mut index, -4, -1, 1);
+    add_int_square(&mut vertices, &mut indices, &mut index, 5, 3, 1);
+    // Add player
+    add_square(
+        &mut vertices,
+        &mut indices,
+        &mut index,
+        player.x,
+        player.y,
+        2,
+    );
 
     let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("Main vertex buffer"),
