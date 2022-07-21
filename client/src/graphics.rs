@@ -9,6 +9,9 @@ use winit::{
     window::Window,
 };
 
+type WindowSize = PhysicalSize<u32>;
+type WindowPosition = PhysicalPosition<f64>;
+
 // TODO: Refactor this into multiple files
 // Keeping as-is for now to make sure that when we do the division we have all the information required
 
@@ -18,7 +21,7 @@ struct CursorPosition {
 }
 
 struct GraphicState {
-    size: PhysicalSize<u32>,
+    size: WindowSize,
     cursor: CursorPosition,
     surface: wgpu::Surface,
     device: wgpu::Device,
@@ -55,99 +58,6 @@ impl Vertex {
 }
 
 const SQUARE_SIZE: f32 = 128.0;
-
-// TODO: Consider making the entire grid uneven instead of even:
-//       Since we are always going to want a square in the "middle" as starting position, there will always need to be an uneven amount
-//       of squares to render it. If we force even numbers we will need to have double the amount of redundant squares.
-//       Not sure though, experiment with this a little (don't forget to use the uneven transformation if going this route)
-// y should be (1 - y) because all texture y coordinates are flipped
-// (1,1) in bottom right
-// (0,0) in top left
-const VERTICES: &[Vertex] = &[
-    // Square bottom-left
-    Vertex {
-        position: [-1.0, -1.0],
-        tex_coords: [0.0, 1.0],
-    }, // bottom-left
-    Vertex {
-        position: [0.0, -1.0],
-        tex_coords: [0.3333, 1.0],
-    }, // bottom-right
-    Vertex {
-        position: [0.0, 0.0],
-        tex_coords: [0.3333, 0.0],
-    }, // top-right
-    Vertex {
-        position: [-1.0, 0.0],
-        tex_coords: [0.0, 0.0],
-    }, // top-left
-    // Square bottom-right
-    Vertex {
-        position: [0.0, -1.0],
-        tex_coords: [0.0, 1.0],
-    }, // bottom-left
-    Vertex {
-        position: [1.0, -1.0],
-        tex_coords: [0.3333, 1.0],
-    }, // bottom-right
-    Vertex {
-        position: [1.0, 0.0],
-        tex_coords: [0.3333, 0.0],
-    }, // top-right
-    Vertex {
-        position: [0.0, 0.0],
-        tex_coords: [0.0, 0.0],
-    }, // top-left
-    // Square top-right
-    Vertex {
-        position: [0.0, 0.0],
-        tex_coords: [0.0, 1.0],
-    }, // bottom-left
-    Vertex {
-        position: [1.0, 0.0],
-        tex_coords: [0.3333, 1.0],
-    }, // bottom-right
-    Vertex {
-        position: [1.0, 1.0],
-        tex_coords: [0.3333, 0.0],
-    }, // top-right
-    Vertex {
-        position: [0.0, 1.0],
-        tex_coords: [0.0, 0.0],
-    }, // top-left
-    // Square top-left
-    Vertex {
-        position: [-1.0, 0.0],
-        tex_coords: [0.0, 1.0],
-    }, // bottom-left
-    Vertex {
-        position: [0.0, 0.0],
-        tex_coords: [0.3333, 1.0],
-    }, // bottom-right
-    Vertex {
-        position: [0.0, 1.0],
-        tex_coords: [0.3333, 0.0],
-    }, // top-right
-    Vertex {
-        position: [-1.0, 1.0],
-        tex_coords: [0.0, 0.0],
-    }, // top-left
-];
-
-const INDICES: &[u16] = &[
-    // Square top-left
-    0, 1, 3, // triangle bottom left
-    1, 2, 3, // triangle top right
-    // Square bottom-right
-    4, 5, 7, // triangle bottom left
-    5, 6, 7, // triangle top right
-    // Square top-right
-    8, 9, 11, // triangle bottom left
-    9, 10, 11, // triangle top right
-    // Square bottom-left
-    12, 13, 15, // triangle bottom left
-    13, 14, 15, // triangle top right
-];
 
 pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
     let mut state = GraphicState::new(&window).await;
@@ -219,9 +129,7 @@ impl GraphicState {
             &projection_bind_group_layout,
         );
         // Create vertex buffer
-        let vertex_buffer = init_vertex_buffer(&device);
-        // Create index buffer
-        let index_buffer = init_index_buffer(&device);
+        let (vertex_buffer, index_buffer, index_count) = init_vertex_index_buffer(&device, &size);
 
         GraphicState {
             size,
@@ -233,7 +141,7 @@ impl GraphicState {
             render_pipeline,
             vertex_buffer,
             index_buffer,
-            index_count: INDICES.len() as u32,
+            index_count,
             diffuse_bind_group,
             projection_bind_group,
             projection_bind_group_layout,
@@ -244,7 +152,7 @@ impl GraphicState {
      * HANDLES
      */
 
-    fn handle_cursor(&mut self, position: PhysicalPosition<f64>) {
+    fn handle_cursor(&mut self, position: WindowPosition) {
         self.cursor.x = position.x / (self.size.width as f64);
         self.cursor.y = position.y / (self.size.height as f64);
     }
@@ -252,7 +160,7 @@ impl GraphicState {
     /**
      * Handle resizing of the window
      */
-    fn handle_resize(&mut self, new_size: &PhysicalSize<u32>, window: &Window) {
+    fn handle_resize(&mut self, new_size: &WindowSize, window: &Window) {
         if new_size.width > 0 && new_size.height > 0 {
             // Reconfigure the surface with the new size
             self.size = *new_size;
@@ -338,7 +246,7 @@ impl GraphicState {
     }
 }
 
-async fn init_adapter(window: &Window) -> (PhysicalSize<u32>, wgpu::Surface, wgpu::Adapter) {
+async fn init_adapter(window: &Window) -> (WindowSize, wgpu::Surface, wgpu::Adapter) {
     let size = window.inner_size();
     // Instance = Main purpose of instance: create surface & adapters
     let instance = wgpu::Instance::new(wgpu::Backends::all());
@@ -383,7 +291,7 @@ async fn init_device_queue(adapter: &wgpu::Adapter) -> (Device, Queue) {
 }
 
 fn init_default_surface_config(
-    size: &PhysicalSize<u32>,
+    size: &WindowSize,
     format: &TextureFormat,
 ) -> wgpu::SurfaceConfiguration {
     // Defaults to support most devices
@@ -573,23 +481,117 @@ fn init_render_pipeline(
     })
 }
 
-fn init_vertex_buffer(device: &wgpu::Device) -> wgpu::Buffer {
-    device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+// TODO: Consider making the entire grid uneven instead of even:
+//       Since we are always going to want a square in the "middle" as starting position, there will always need to be an uneven amount
+//       of squares to render it. If we force even numbers we will need to have double the amount of redundant squares.
+//       Not sure though, experiment with this a little (don't forget to use the uneven transformation if going this route)
+fn keep_even(value: u32) -> u32 {
+    return if value % 2 == 0 { value + 1 } else { value };
+}
+
+fn number_of_squares(parameter: u32) -> u32 {
+    keep_even(((parameter as f32) / SQUARE_SIZE).ceil() as u32)
+}
+
+fn number_of_squares_horionztally(size: &WindowSize) -> u32 {
+    number_of_squares(size.width)
+}
+
+fn number_of_squares_vertically(size: &WindowSize) -> u32 {
+    number_of_squares(size.height)
+}
+
+fn grid_range_start(square_count: f32, offset: f32) -> i32 {
+    ((-1.0 * square_count) / 2.0).round() as i32 + offset.floor() as i32
+}
+
+fn grid_range_end(square_count: f32, offset: f32) -> i32 {
+    ((square_count - 2.0) / 2.0).round() as i32 + offset.ceil() as i32 + 1
+}
+
+fn vertices_for_coords(x: f32, y: f32) -> Vec<Vertex> {
+    Vec::from([
+        Vertex {
+            position: [x, y],
+            tex_coords: [0.0, 1.0],
+        },
+        Vertex {
+            position: [x + 1.0, y],
+            tex_coords: [0.33333, 1.0],
+        },
+        Vertex {
+            position: [x + 1.0, y + 1.0],
+            tex_coords: [0.33333, 0.0],
+        },
+        Vertex {
+            position: [x, y + 1.0],
+            tex_coords: [0.0, 0.0],
+        },
+    ])
+}
+
+fn indices_for_index(index: u16, offset: u16) -> Vec<u16> {
+    let i = index * offset;
+    log::info!("index: {}, offset: {}, i: {}", index, offset, i);
+    Vec::from([i, i + 1, i + 3, i + 1, i + 2, i + 3])
+}
+
+// TODO: Get rid of all these tuple returns and make sure it returns a proper struct instead to avoid confusion
+fn init_vertex_index_buffer(
+    device: &wgpu::Device,
+    size: &WindowSize,
+) -> (wgpu::Buffer, wgpu::Buffer, u32) {
+    let mut vertices: Vec<Vertex> = Vec::new();
+    let mut indices: Vec<u16> = Vec::new();
+    let horizontal_len = number_of_squares_horionztally(size) as f32;
+    let vertical_len = number_of_squares_vertically(size) as f32;
+    log::info!("Horizontal {}, Vertical {}", horizontal_len, vertical_len);
+
+    let y_start = grid_range_start(vertical_len, 0.0);
+    let y_end = grid_range_end(vertical_len, 0.0);
+    let x_start = grid_range_start(horizontal_len, 0.0);
+    let x_end = grid_range_end(horizontal_len, 0.0);
+
+    log::info!(
+        "y start: {}, y end: {}, x start: {}, x end: {}",
+        y_start,
+        y_end,
+        x_start,
+        x_end
+    );
+
+    let mut index = 0;
+    for y in y_start..y_end {
+        for x in x_start..x_end {
+            log::info!(
+                "Iterating over grid range: y: {}, x: {}, index: {index}",
+                y,
+                x
+            );
+            let mut next_vertices = vertices_for_coords(x as f32, y as f32);
+            let vertex_count = next_vertices.len() as u16;
+            vertices.append(&mut next_vertices);
+            indices.append(&mut indices_for_index(index, vertex_count).to_vec());
+            index += 1;
+        }
+    }
+    log::info!("Vertices: {:?}", vertices);
+    log::info!("Indices: {:?}", indices);
+
+    let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("Main vertex buffer"),
-        contents: bytemuck::cast_slice(&VERTICES),
+        contents: bytemuck::cast_slice(&vertices),
         usage: wgpu::BufferUsages::VERTEX,
-    })
-}
-
-fn init_index_buffer(device: &wgpu::Device) -> wgpu::Buffer {
-    device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+    });
+    let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("Main index buffer"),
-        contents: bytemuck::cast_slice(&INDICES),
+        contents: bytemuck::cast_slice(&indices),
         usage: wgpu::BufferUsages::INDEX,
-    })
+    });
+    (vertex_buffer, index_buffer, indices.len() as u32)
 }
 
-fn init_projection_matrix_buffer(device: &wgpu::Device, size: &PhysicalSize<u32>) -> wgpu::Buffer {
+fn init_projection_matrix_buffer(device: &wgpu::Device, size: &WindowSize) -> wgpu::Buffer {
     let scale_x = (2.0 * SQUARE_SIZE) / (size.width as f32);
     let scale_y = (2.0 * SQUARE_SIZE) / (size.height as f32);
     let transform_x = 0.0; //-1.0 * scale_x;
@@ -625,7 +627,7 @@ fn init_projection_bind_group_layout(device: &Device) -> wgpu::BindGroupLayout {
 
 fn init_projection_bind_group(
     device: &Device,
-    size: &PhysicalSize<u32>,
+    size: &WindowSize,
     layout: &wgpu::BindGroupLayout,
 ) -> wgpu::BindGroup {
     let projection_matrix_buffer = init_projection_matrix_buffer(&device, &size);
