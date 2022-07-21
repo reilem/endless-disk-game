@@ -1,3 +1,5 @@
+use std::{collections::HashSet, time::Instant};
+
 use wgpu::{
     include_wgsl, util::DeviceExt, Device, PipelineLayoutDescriptor, Queue,
     RenderPipelineDescriptor, SurfaceConfiguration, TextureFormat,
@@ -15,6 +17,7 @@ type WindowPosition = PhysicalPosition<f64>;
 // TODO: Refactor this into multiple files
 // Keeping as-is for now to make sure that when we do the division we have all the information required
 
+#[derive(Debug)]
 struct Position {
     x: f64,
     y: f64,
@@ -23,6 +26,7 @@ struct Position {
 struct GraphicState {
     size: WindowSize,
     cursor: Position,
+    pressed_keys: HashSet<VirtualKeyCode>,
     player: Position, // TODO: this needs to be extracted since it is not at all graphics related
     surface: wgpu::Surface,
     device: wgpu::Device,
@@ -35,6 +39,7 @@ struct GraphicState {
     diffuse_bind_group: wgpu::BindGroup,
     projection_bind_group: wgpu::BindGroup,
     projection_bind_group_layout: wgpu::BindGroupLayout,
+    last_update: Instant,
 }
 
 #[repr(C)]
@@ -59,6 +64,8 @@ impl Vertex {
 }
 
 const SQUARE_SIZE: f32 = 128.0;
+const UPDATE_TIME: u128 = (1000.0 as f64 / 60.0 as f64) as u128;
+const SPEED: f64 = 0.05;
 
 pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
     let mut state = GraphicState::new(&window).await;
@@ -70,7 +77,9 @@ pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
         // the resources are properly cleaned up.
         let _ = &state;
 
-        *control_flow = ControlFlow::Wait; // Note: Setting this to ::Poll will run this as a game loop
+        state.update(&window);
+
+        *control_flow = ControlFlow::Poll; // Note: Setting this to ::Poll will run this as a game loop
         match event {
             Event::WindowEvent {
                 event, window_id, ..
@@ -89,6 +98,19 @@ pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
                         },
                     ..
                 } => *control_flow = ControlFlow::Exit,
+                WindowEvent::KeyboardInput { input, .. } => match input {
+                    KeyboardInput {
+                        state: ElementState::Pressed,
+                        virtual_keycode: Some(keycode),
+                        ..
+                    } => state.handle_key_press(&keycode),
+                    KeyboardInput {
+                        state: ElementState::Released,
+                        virtual_keycode: Some(keycode),
+                        ..
+                    } => state.handle_key_release(&keycode),
+                    _ => {}
+                },
                 WindowEvent::CursorMoved { position, .. } => {
                     state.handle_cursor(position);
                     window.request_redraw();
@@ -137,6 +159,7 @@ impl GraphicState {
         GraphicState {
             size,
             cursor: Position { x: 0.0, y: 0.0 },
+            pressed_keys: HashSet::new(),
             player,
             surface,
             device,
@@ -149,6 +172,33 @@ impl GraphicState {
             diffuse_bind_group,
             projection_bind_group,
             projection_bind_group_layout,
+            last_update: Instant::now(),
+        }
+    }
+
+    fn update(&mut self, window: &Window) {
+        let time_elapsed = self.last_update.elapsed().as_millis();
+        if time_elapsed >= UPDATE_TIME {
+            log::info!(
+                "Updating: {:?}, time elapsed: {}, player: {:?}",
+                self.pressed_keys,
+                time_elapsed,
+                self.player,
+            );
+            for key in self.pressed_keys.iter() {
+                match key {
+                    VirtualKeyCode::Left => self.player.x -= SPEED,
+                    VirtualKeyCode::Down => self.player.y -= SPEED,
+                    VirtualKeyCode::Right => self.player.x += SPEED,
+                    VirtualKeyCode::Up => self.player.y += SPEED,
+                    _ => {}
+                }
+            }
+            if self.pressed_keys.len() > 0 {
+                self.refresh_vertex_index_buffer();
+                window.request_redraw();
+            }
+            self.last_update = Instant::now();
         }
     }
 
@@ -159,6 +209,14 @@ impl GraphicState {
     fn handle_cursor(&mut self, position: WindowPosition) {
         self.cursor.x = position.x / (self.size.width as f64);
         self.cursor.y = position.y / (self.size.height as f64);
+    }
+
+    fn handle_key_press(&mut self, keycode: &VirtualKeyCode) {
+        self.pressed_keys.insert(keycode.clone());
+    }
+
+    fn handle_key_release(&mut self, keycode: &VirtualKeyCode) {
+        self.pressed_keys.remove(keycode);
     }
 
     /**
@@ -176,11 +234,15 @@ impl GraphicState {
                 &self.size,
                 &self.projection_bind_group_layout,
             );
-            (self.vertex_buffer, self.index_buffer, self.index_count) =
-                init_vertex_index_buffer(&self.device, &self.size, &self.player);
+            self.refresh_vertex_index_buffer();
             // On macos the window needs to be redrawn manually after resizing
             window.request_redraw();
         }
+    }
+
+    fn refresh_vertex_index_buffer(&mut self) {
+        (self.vertex_buffer, self.index_buffer, self.index_count) =
+            init_vertex_index_buffer(&self.device, &self.size, &self.player);
     }
 
     /**
