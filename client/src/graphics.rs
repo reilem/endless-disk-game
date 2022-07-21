@@ -11,6 +11,8 @@ use winit::{
     window::Window,
 };
 
+// TODO: Currently this is literal pixels, so you get lots of squares on 4k screen and not so much on 1080p
+// Maybe using logical size instead will fix this, otherwise we need to use some sort of scaling factor to correct for this
 type WindowSize = PhysicalSize<u32>;
 type WindowPosition = PhysicalPosition<f64>;
 
@@ -80,6 +82,7 @@ pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
 
         state.update(&window);
 
+        // TODO: Try using WaitUntil, Poll seems to be using 100% CPU
         *control_flow = ControlFlow::Poll; // Note: Setting this to ::Poll will run this as a game loop
         match event {
             Event::WindowEvent {
