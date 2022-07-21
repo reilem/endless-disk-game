@@ -485,12 +485,14 @@ fn init_render_pipeline(
 //       Since we are always going to want a square in the "middle" as starting position, there will always need to be an uneven amount
 //       of squares to render it. If we force even numbers we will need to have double the amount of redundant squares.
 //       Not sure though, experiment with this a little (don't forget to use the uneven transformation if going this route)
-fn keep_even(value: u32) -> u32 {
+fn keep_uneven(value: u32) -> u32 {
     return if value % 2 == 0 { value + 1 } else { value };
 }
 
 fn number_of_squares(parameter: u32) -> u32 {
-    keep_even(((parameter as f32) / SQUARE_SIZE).ceil() as u32)
+    let divided = (parameter as f32) / SQUARE_SIZE;
+    let ceiled = divided.ceil();
+    keep_uneven(ceiled as u32)
 }
 
 fn number_of_squares_horionztally(size: &WindowSize) -> u32 {
@@ -501,12 +503,28 @@ fn number_of_squares_vertically(size: &WindowSize) -> u32 {
     number_of_squares(size.height)
 }
 
+/**
+ * Take a square count of the world and an offset (player position) and calculates the lowest index in the range which will
+ * be used to calculate the world grid.
+ *
+ * By dividing and ceiling the negation of the size by two we get the lowest index of the left-most (or bottom-most) square in the grid.
+ * By adding the floor of the offset we ensure that negative numbers are rounded to their lowest value
+ * and an extra square is always prepared in the grid before it comes into view.
+ */
 fn grid_range_start(square_count: f32, offset: f32) -> i32 {
-    ((-1.0 * square_count) / 2.0).round() as i32 + offset.floor() as i32
+    ((-1.0 * square_count) / 2.0).ceil() as i32 + offset.floor() as i32
 }
 
+/**
+ * Take square count of the world and an offset (player position) and calculates the highest index in the range which will
+ * be used during calculation of the world grid.
+ *
+ * We divide the square count by two and floor it to get the bottom-left coordinate of the right most square in the grid. This
+ * could cause glitches when even numbers are passed to this calculation. But we fix this by ensuring the sizes
+ * of the grid are always uneven numbers. At the end we add one because range calculations are not inclusive in rust.
+ */
 fn grid_range_end(square_count: f32, offset: f32) -> i32 {
-    ((square_count - 2.0) / 2.0).round() as i32 + offset.ceil() as i32 + 1
+    (square_count / 2.0).floor() as i32 + offset.ceil() as i32 + 1
 }
 
 fn vertices_for_coords(x: f32, y: f32) -> Vec<Vertex> {
@@ -543,8 +561,8 @@ fn init_vertex_index_buffer(
 ) -> (wgpu::Buffer, wgpu::Buffer, u32) {
     let mut vertices: Vec<Vertex> = Vec::new();
     let mut indices: Vec<u16> = Vec::new();
-    let horizontal_len = number_of_squares_horionztally(size) as f32;
-    let vertical_len = number_of_squares_vertically(size) as f32;
+    let horizontal_len = number_of_squares_horionztally(&size) as f32;
+    let vertical_len = number_of_squares_vertically(&size) as f32;
     log::info!("Horizontal {}, Vertical {}", horizontal_len, vertical_len);
 
     let y_start = grid_range_start(vertical_len, 0.0);
@@ -563,6 +581,10 @@ fn init_vertex_index_buffer(
     let mut index = 0;
     for y in y_start..y_end {
         for x in x_start..x_end {
+            if x == 0 && y == 0 {
+                // TODO: Remove (this hides the middle square)
+                continue;
+            }
             log::info!(
                 "Iterating over grid range: y: {}, x: {}, index: {index}",
                 y,
@@ -591,11 +613,57 @@ fn init_vertex_index_buffer(
     (vertex_buffer, index_buffer, indices.len() as u32)
 }
 
+/**
+ * The following is an explanation for the used projection matrix.
+ *
+ * Scaling x by (2 / horizontal_squares) & y by (2 / vertical_squares) will scale the squares to fit in the clip space.
+ * This is because the clip space has a width of 2 (-1 to +1), and we are trying to fit in "horizontal_squares" number of squares in the width
+ * and "vertical_squares" number of squares in the height, so (2 / horizontal_squares) will give us the size each square will need
+ * to be to fit inside the clip-space. Multiplying each grid coordinate by this number will resize each vertex to fit inside the grid.
+ * This gives us: clip_scale = 2 / horizontal_squares
+ *
+ * After this transformation the grid will be contained within the clip space (-1 to 1). However it will be streched!
+ * To solve this we add a correction scaling. We want each square to be of size SQUARE_SIZE but after initial scaling they will have a width
+ * of (real_square_width = window_width / horizontal_squares). To correct this we want to find X for: (real_square_width * X = SQUARE_SIZE).
+ * Some basic algebra:
+ * Given: real_square_width = window_width / horizontal_squares
+ * Find "correction" in: real_square_width * correction = SQUARE_SIZE
+ * => real_square_width * correction = SQUARE_SIZE
+ * => correction = SQUARE_SIZE / real_square_width
+ * => correction = SQUARE_SIZE / (window_width / horizontal_squares)
+ * => correction = SQUARE_SIZE * (horizontal_squares / window_width)
+ *
+ * We want to scale each vector by both the clip_scale (to fit them in clip space) and correction (to give them correct size).
+ * As the final scaling factor we use:
+ * scale = clip_scale * correction
+ * => scale = (2 / horizontal_squares) * SQUARE_SIZE * (horizontal_squares / window_width)
+ * => scale = (2 * SQUARE_SIZE) * (1 / window_width)
+ * => scale = (2 * SQUARE_SIZE) / window_width
+ * Which give us a final scaling factors of:
+ * scale_x = (2 * SQUARE_SIZE) / window_width
+ * scale_y = (2 * SQUARE_SIZE) / window_height
+ * [solution for height is analogous]
+ *
+ * Scale_x and scale_y are coincidentally also the width and height of a square in clip space. These two values are not the same
+ * because clip space goes from a constant -1 to 1, but the screen is a dynamic width and height. So if the width is greater than the
+ * height than the width of a square in clip space will be less than it's height in clip space.
+ *
+ * Because of this we add (-1 * scale_x / 2) and  (-1 * scale_y / 2) to the x and y transformations respectively. This will shift the
+ * entire grid by half a square to the left and half a square down. This ensures that the center square is presented in the middle of
+ * the screen.
+ */
 fn init_projection_matrix_buffer(device: &wgpu::Device, size: &WindowSize) -> wgpu::Buffer {
     let scale_x = (2.0 * SQUARE_SIZE) / (size.width as f32);
     let scale_y = (2.0 * SQUARE_SIZE) / (size.height as f32);
-    let transform_x = 0.0; //-1.0 * scale_x;
-    let transform_y = 0.0; // -1.0 * scale_y;
+    log::info!(
+        "Scale_x: {}, scale_y: {}, clip_space_width: {}, clip_space_height: {}",
+        scale_x,
+        scale_y,
+        2.0 / 5.0,
+        2.0 / 3.0
+    );
+    let transform_x = scale_x / -2.0;
+    let transform_y = scale_y / -2.0;
     let projection_matrix = [
         [scale_x, 0.0, 0.0, 0.0],
         [0.0, scale_y, 0.0, 0.0],
