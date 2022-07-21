@@ -172,7 +172,8 @@ impl GraphicState {
                 &self.size,
                 &self.projection_bind_group_layout,
             );
-            // TODO: recreate projection matrix
+            (self.vertex_buffer, self.index_buffer, self.index_count) =
+                init_vertex_index_buffer(&self.device, &self.size);
             // On macos the window needs to be redrawn manually after resizing
             window.request_redraw();
         }
@@ -481,30 +482,39 @@ fn init_render_pipeline(
     })
 }
 
-// TODO: Consider making the entire grid uneven instead of even:
-//       Since we are always going to want a square in the "middle" as starting position, there will always need to be an uneven amount
-//       of squares to render it. If we force even numbers we will need to have double the amount of redundant squares.
-//       Not sure though, experiment with this a little (don't forget to use the uneven transformation if going this route)
+/**
+ * Always returns an uneven number, adds one if even to ensure full grid coverage.
+ */
 fn keep_uneven(value: u32) -> u32 {
     return if value % 2 == 0 { value + 1 } else { value };
 }
 
+/**
+ * Returns the number of squares that will be needed to fill the window in squares
+ * with size SQUARE_SIZE based on given parameter.
+ */
 fn number_of_squares(parameter: u32) -> u32 {
     let divided = (parameter as f32) / SQUARE_SIZE;
     let ceiled = divided.ceil();
     keep_uneven(ceiled as u32)
 }
 
+/**
+ * Returns the number of squares that will be needed to fill the window horizontally
+ */
 fn number_of_squares_horionztally(size: &WindowSize) -> u32 {
     number_of_squares(size.width)
 }
 
+/**
+ * Returns the number of squares that will be needed to fill the window vertically
+ */
 fn number_of_squares_vertically(size: &WindowSize) -> u32 {
     number_of_squares(size.height)
 }
 
 /**
- * Take a square count of the world and an offset (player position) and calculates the lowest index in the range which will
+ * Takes a square count of the world and an offset (player position) and calculates the lowest index in the range which will
  * be used to calculate the world grid.
  *
  * By dividing and ceiling the negation of the size by two we get the lowest index of the left-most (or bottom-most) square in the grid.
@@ -550,7 +560,6 @@ fn vertices_for_coords(x: f32, y: f32) -> Vec<Vertex> {
 
 fn indices_for_index(index: u16, offset: u16) -> Vec<u16> {
     let i = index * offset;
-    log::info!("index: {}, offset: {}, i: {}", index, offset, i);
     Vec::from([i, i + 1, i + 3, i + 1, i + 2, i + 3])
 }
 
@@ -563,33 +572,15 @@ fn init_vertex_index_buffer(
     let mut indices: Vec<u16> = Vec::new();
     let horizontal_len = number_of_squares_horionztally(&size) as f32;
     let vertical_len = number_of_squares_vertically(&size) as f32;
-    log::info!("Horizontal {}, Vertical {}", horizontal_len, vertical_len);
 
     let y_start = grid_range_start(vertical_len, 0.0);
     let y_end = grid_range_end(vertical_len, 0.0);
     let x_start = grid_range_start(horizontal_len, 0.0);
     let x_end = grid_range_end(horizontal_len, 0.0);
 
-    log::info!(
-        "y start: {}, y end: {}, x start: {}, x end: {}",
-        y_start,
-        y_end,
-        x_start,
-        x_end
-    );
-
     let mut index = 0;
     for y in y_start..y_end {
         for x in x_start..x_end {
-            if x == 0 && y == 0 {
-                // TODO: Remove (this hides the middle square)
-                continue;
-            }
-            log::info!(
-                "Iterating over grid range: y: {}, x: {}, index: {index}",
-                y,
-                x
-            );
             let mut next_vertices = vertices_for_coords(x as f32, y as f32);
             let vertex_count = next_vertices.len() as u16;
             vertices.append(&mut next_vertices);
@@ -597,8 +588,6 @@ fn init_vertex_index_buffer(
             index += 1;
         }
     }
-    log::info!("Vertices: {:?}", vertices);
-    log::info!("Indices: {:?}", indices);
 
     let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("Main vertex buffer"),
@@ -655,13 +644,6 @@ fn init_vertex_index_buffer(
 fn init_projection_matrix_buffer(device: &wgpu::Device, size: &WindowSize) -> wgpu::Buffer {
     let scale_x = (2.0 * SQUARE_SIZE) / (size.width as f32);
     let scale_y = (2.0 * SQUARE_SIZE) / (size.height as f32);
-    log::info!(
-        "Scale_x: {}, scale_y: {}, clip_space_width: {}, clip_space_height: {}",
-        scale_x,
-        scale_y,
-        2.0 / 5.0,
-        2.0 / 3.0
-    );
     let transform_x = scale_x / -2.0;
     let transform_y = scale_y / -2.0;
     let projection_matrix = [
