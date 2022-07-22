@@ -5,7 +5,7 @@ use wgpu::{
     RenderPipelineDescriptor, SurfaceConfiguration, TextureFormat,
 };
 use winit::{
-    dpi::{PhysicalPosition, PhysicalSize},
+    dpi::{LogicalPosition, LogicalSize, PhysicalPosition, PhysicalSize},
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::Window,
@@ -19,10 +19,7 @@ macro_rules! refresh_time {
     };
 }
 
-// TODO: Currently this is literal pixels, so you get lots of squares on 4k screen and not so much on 1080p
-// Maybe using logical size instead will fix this, otherwise we need to use some sort of scaling factor to correct for this
-type WindowSize = PhysicalSize<u32>;
-type WindowPosition = PhysicalPosition<f64>;
+type WindowSize = LogicalSize<u32>;
 
 // TODO: Refactor this into multiple files
 // Keeping as-is for now to make sure that when we do the division we have all the information required
@@ -35,6 +32,7 @@ struct Position {
 
 struct GraphicState {
     size: WindowSize,
+    scale_factor: f64,
     cursor: Position,
     pressed_keys: HashSet<VirtualKeyCode>,
     player: Position, // TODO: this needs to be extracted since it is not at all graphics related
@@ -72,9 +70,9 @@ impl Vertex {
     }
 }
 
-const SQUARE_SIZE: f32 = 128.0;
+const SQUARE_SIZE: f32 = 96.0;
 const DEFAULT_UPDATE_TIME: u32 = refresh_time!(60.0); // TODO: Detect and use system FPS
-const SPEED: f64 = 0.02;
+const SPEED: f64 = 0.015;
 
 pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
     let mut state = GraphicState::new(&window).await;
@@ -91,16 +89,16 @@ pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
         let next_update = Instant::now()
             .checked_add(Duration::new(0, DEFAULT_UPDATE_TIME))
             .expect("Failed to set next update time");
-
         *control_flow = ControlFlow::WaitUntil(next_update);
         match event {
             Event::WindowEvent {
                 event, window_id, ..
             } if window_id == window.id() => match event {
-                WindowEvent::Resized(new_size) => state.handle_resize(&new_size, &window),
-                WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
-                    state.handle_resize(&new_inner_size, &window)
-                }
+                WindowEvent::Resized(new_size) => state.handle_resize(&new_size, None, &window),
+                WindowEvent::ScaleFactorChanged {
+                    new_inner_size,
+                    scale_factor,
+                } => state.handle_resize(&new_inner_size, Some(scale_factor), &window),
                 WindowEvent::CloseRequested
                 | WindowEvent::KeyboardInput {
                     input:
@@ -143,13 +141,13 @@ impl GraphicState {
     async fn new(window: &Window) -> Self {
         let player = Position { x: 0.0, y: 0.0 };
         // Create size, instance, surface & adapter
-        let (size, surface, adapter) = init_adapter(&window).await;
+        let (size, scale_factor, surface, adapter) = init_adapter(&window).await;
         // Create the logical device and command queue
         let (device, queue) = init_device_queue(&adapter).await;
         // Get best texture format for adapter
         let texture_format = surface.get_supported_formats(&adapter)[0];
         // Create default surface config
-        let config = init_default_surface_config(&size, &texture_format);
+        let config = init_default_surface_config(&size.to_physical(scale_factor), &texture_format);
         // Configure the surface to use this device & configuration
         surface.configure(&device, &config);
         // Create texture bind group
@@ -173,6 +171,7 @@ impl GraphicState {
 
         GraphicState {
             size,
+            scale_factor,
             cursor: Position { x: 0.0, y: 0.0 },
             pressed_keys: HashSet::new(),
             player,
@@ -211,7 +210,8 @@ impl GraphicState {
      * HANDLES
      */
 
-    fn handle_cursor(&mut self, position: WindowPosition) {
+    fn handle_cursor(&mut self, physical: PhysicalPosition<f64>) {
+        let position: LogicalPosition<f64> = physical.to_logical(self.scale_factor);
         self.cursor.x = position.x / (self.size.width as f64);
         self.cursor.y = position.y / (self.size.height as f64);
     }
@@ -227,10 +227,16 @@ impl GraphicState {
     /**
      * Handle resizing of the window
      */
-    fn handle_resize(&mut self, new_size: &WindowSize, window: &Window) {
+    fn handle_resize(
+        &mut self,
+        new_size: &PhysicalSize<u32>,
+        scale_factor: Option<f64>,
+        window: &Window,
+    ) {
         if new_size.width > 0 && new_size.height > 0 {
             // Reconfigure the surface with the new size
-            self.size = *new_size;
+            self.scale_factor = scale_factor.unwrap_or(self.scale_factor);
+            self.size = new_size.to_logical(self.scale_factor);
             self.config.width = new_size.width;
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
@@ -246,8 +252,7 @@ impl GraphicState {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Refresh Buffer Command Encoder"),
             });
-        // TODO: recreating all bind groups & buffers is probably very inefficient, find a better way
-        // Currently this is causing frame drops
+        // Creates a new projection buffer and copies it over to the existing one
         let next_projection_buffer = init_projection_matrix_buffer(
             &self.device,
             &self.size,
@@ -335,8 +340,10 @@ impl GraphicState {
     }
 }
 
-async fn init_adapter(window: &Window) -> (WindowSize, wgpu::Surface, wgpu::Adapter) {
-    let size = window.inner_size();
+async fn init_adapter(window: &Window) -> (WindowSize, f64, wgpu::Surface, wgpu::Adapter) {
+    let physical_size = window.inner_size();
+    let scale_factor = window.scale_factor();
+    let size = LogicalSize::from_physical(physical_size, scale_factor);
     // Instance = Main purpose of instance: create surface & adapters
     let instance = wgpu::Instance::new(wgpu::Backends::all());
     // Surface = part of the window we draw to (window needs to implement raw-window-handler, winit does this)
@@ -350,7 +357,7 @@ async fn init_adapter(window: &Window) -> (WindowSize, wgpu::Surface, wgpu::Adap
         })
         .await
         .expect("Failed to find an appropriate adapter");
-    (size, surface, adapter)
+    (size, scale_factor, surface, adapter)
 }
 
 async fn init_device_queue(adapter: &wgpu::Adapter) -> (Device, Queue) {
@@ -380,7 +387,7 @@ async fn init_device_queue(adapter: &wgpu::Adapter) -> (Device, Queue) {
 }
 
 fn init_default_surface_config(
-    size: &WindowSize,
+    size: &PhysicalSize<u32>,
     format: &TextureFormat,
 ) -> wgpu::SurfaceConfiguration {
     // Defaults to support most devices
