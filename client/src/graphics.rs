@@ -1,5 +1,5 @@
-use std::{collections::HashSet, time::Instant};
-
+use instant::{Duration, Instant};
+use std::collections::HashSet;
 use wgpu::{
     include_wgsl, util::DeviceExt, Device, PipelineLayoutDescriptor, Queue,
     RenderPipelineDescriptor, SurfaceConfiguration, TextureFormat,
@@ -10,6 +10,14 @@ use winit::{
     event_loop::{ControlFlow, EventLoop},
     window::Window,
 };
+
+/// Take an fps (Frames Per Second) float number and returns the amount of nanoseconds between updates
+/// required to achieve that fps.
+macro_rules! refresh_time {
+    ( $fps:literal ) => {
+        (1000000000.0 as f64 / $fps as f64) as u32
+    };
+}
 
 // TODO: Currently this is literal pixels, so you get lots of squares on 4k screen and not so much on 1080p
 // Maybe using logical size instead will fix this, otherwise we need to use some sort of scaling factor to correct for this
@@ -41,7 +49,6 @@ struct GraphicState {
     diffuse_bind_group: wgpu::BindGroup,
     projection_bind_group: wgpu::BindGroup,
     projection_bind_group_layout: wgpu::BindGroupLayout,
-    last_update: Instant,
 }
 
 #[repr(C)]
@@ -66,14 +73,13 @@ impl Vertex {
 }
 
 const SQUARE_SIZE: f32 = 128.0;
-const UPDATE_TIME: u128 = (1000.0 as f64 / 60.0 as f64) as u128;
-const SPEED: f64 = 0.04;
+const DEFAULT_UPDATE_TIME: u32 = refresh_time!(60.0); // TODO: Detect and use system FPS
+const SPEED: f64 = 0.02;
 
 pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
     let mut state = GraphicState::new(&window).await;
 
-    log::info!("Starting event_loop");
-    // TODO: Fix this using 100% CPU (maybe just a debug thing though)
+    log::info!("Starting event loop");
     event_loop.run(move |event, _, control_flow| {
         // Have the closure take ownership of the resources.
         // `event_loop.run` never returns, therefore we must do this to ensure
@@ -82,8 +88,11 @@ pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
 
         state.update(&window);
 
-        // TODO: Try using WaitUntil, Poll seems to be using 100% CPU
-        *control_flow = ControlFlow::Poll; // Note: Setting this to ::Poll will run this as a game loop
+        let next_update = Instant::now()
+            .checked_add(Duration::new(0, DEFAULT_UPDATE_TIME))
+            .expect("Failed to set next update time");
+
+        *control_flow = ControlFlow::WaitUntil(next_update);
         match event {
             Event::WindowEvent {
                 event, window_id, ..
@@ -176,27 +185,23 @@ impl GraphicState {
             diffuse_bind_group,
             projection_bind_group,
             projection_bind_group_layout,
-            last_update: Instant::now(), // TODO: std::time does not work in wasm, find an alternative
         }
     }
 
     fn update(&mut self, window: &Window) {
-        let time_elapsed = self.last_update.elapsed().as_millis();
-        if time_elapsed >= UPDATE_TIME {
-            for key in self.pressed_keys.iter() {
-                match key {
-                    VirtualKeyCode::Left => self.player.x -= SPEED,
-                    VirtualKeyCode::Down => self.player.y -= SPEED,
-                    VirtualKeyCode::Right => self.player.x += SPEED,
-                    VirtualKeyCode::Up => self.player.y += SPEED,
-                    _ => {}
-                }
+        // TODO: Perform some sort of mutex lock to prevent calculating next frame when last frame wasn't done yet
+        for key in self.pressed_keys.iter() {
+            match key {
+                VirtualKeyCode::Left => self.player.x -= SPEED,
+                VirtualKeyCode::Down => self.player.y -= SPEED,
+                VirtualKeyCode::Right => self.player.x += SPEED,
+                VirtualKeyCode::Up => self.player.y += SPEED,
+                _ => {}
             }
-            if self.pressed_keys.len() > 0 {
-                self.refresh_buffers();
-                window.request_redraw();
-            }
-            self.last_update = Instant::now();
+        }
+        if self.pressed_keys.len() > 0 {
+            self.refresh_buffers();
+            window.request_redraw();
         }
     }
 
