@@ -48,7 +48,7 @@ struct GraphicState {
     index_count: u32,
     diffuse_bind_group: wgpu::BindGroup,
     projection_bind_group: wgpu::BindGroup,
-    projection_bind_group_layout: wgpu::BindGroupLayout,
+    projection_buffer: wgpu::Buffer,
 }
 
 #[repr(C)]
@@ -156,8 +156,10 @@ impl GraphicState {
         let (diffuse_bind_group, diffuse_bind_group_layout) = init_texture(&device, &queue);
         // Create projection matrix buffer
         let projection_bind_group_layout = init_projection_bind_group_layout(&device);
+        let projection_buffer =
+            init_projection_matrix_buffer(&device, &size, &player, wgpu::BufferUsages::COPY_DST);
         let projection_bind_group =
-            init_projection_bind_group(&device, &size, &player, &projection_bind_group_layout);
+            init_projection_bind_group(&device, &projection_buffer, &projection_bind_group_layout);
         // Create render pipeline
         let render_pipeline = init_render_pipeline(
             &device,
@@ -183,8 +185,8 @@ impl GraphicState {
             index_buffer,
             index_count,
             diffuse_bind_group,
+            projection_buffer,
             projection_bind_group,
-            projection_bind_group_layout,
         }
     }
 
@@ -239,16 +241,30 @@ impl GraphicState {
     }
 
     fn refresh_buffers(&mut self) {
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Refresh Buffer Command Encoder"),
+            });
         // TODO: recreating all bind groups & buffers is probably very inefficient, find a better way
         // Currently this is causing frame drops
-        self.projection_bind_group = init_projection_bind_group(
+        let next_projection_buffer = init_projection_matrix_buffer(
             &self.device,
             &self.size,
             &self.player,
-            &self.projection_bind_group_layout,
+            wgpu::BufferUsages::COPY_SRC,
         );
+        encoder.copy_buffer_to_buffer(
+            &next_projection_buffer,
+            0,
+            &self.projection_buffer,
+            0,
+            std::mem::size_of::<[[f32; 4]; 4]>() as u64,
+        );
+
         (self.vertex_buffer, self.index_buffer, self.index_count) =
             init_vertex_index_buffer(&self.device, &self.size, &self.player);
+        self.queue.submit(Some(encoder.finish()));
     }
 
     /**
@@ -786,22 +802,26 @@ fn init_projection_matrix_buffer(
     device: &wgpu::Device,
     size: &WindowSize,
     player: &Position,
+    usage: wgpu::BufferUsages, // COPY_DST if it's the main reference, COPY_SRC for update sources
 ) -> wgpu::Buffer {
+    device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Main projection matrix buffer"),
+        contents: bytemuck::cast_slice(&calculate_projection_matrix(size, player)),
+        usage: wgpu::BufferUsages::UNIFORM | usage,
+    })
+}
+
+fn calculate_projection_matrix(size: &WindowSize, player: &Position) -> [[f32; 4]; 4] {
     let scale_x = (2.0 * SQUARE_SIZE) / (size.width as f32);
     let scale_y = (2.0 * SQUARE_SIZE) / (size.height as f32);
     let transform_x = scale_x / -2.0 - (scale_x * player.x as f32);
     let transform_y = scale_y / -2.0 - (scale_y * player.y as f32);
-    let projection_matrix = [
+    [
         [scale_x, 0.0, 0.0, 0.0],
         [0.0, scale_y, 0.0, 0.0],
         [0.0, 0.0, 1.0, 0.0],
         [transform_x, transform_y, 0.0, 1.0],
-    ];
-    device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("Main projection matrix buffer"),
-        contents: bytemuck::cast_slice(&projection_matrix),
-        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-    })
+    ]
 }
 
 fn init_projection_bind_group_layout(device: &Device) -> wgpu::BindGroupLayout {
@@ -822,16 +842,14 @@ fn init_projection_bind_group_layout(device: &Device) -> wgpu::BindGroupLayout {
 
 fn init_projection_bind_group(
     device: &Device,
-    size: &WindowSize,
-    player: &Position,
+    projection_buffer: &wgpu::Buffer,
     layout: &wgpu::BindGroupLayout,
 ) -> wgpu::BindGroup {
-    let projection_matrix_buffer = init_projection_matrix_buffer(device, size, player);
     device.create_bind_group(&wgpu::BindGroupDescriptor {
         layout: &layout,
         entries: &[wgpu::BindGroupEntry {
             binding: 0,
-            resource: projection_matrix_buffer.as_entire_binding(),
+            resource: projection_buffer.as_entire_binding(),
         }],
         label: Some("Project matrix bind group"),
     })
