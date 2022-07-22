@@ -6,7 +6,7 @@ use wgpu::{
 };
 use winit::{
     dpi::{LogicalPosition, LogicalSize, PhysicalPosition, PhysicalSize},
-    event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
+    event::{ElementState, Event, KeyboardInput, MouseButton, VirtualKeyCode, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::Window,
 };
@@ -35,6 +35,7 @@ struct GraphicState {
     scale_factor: f64,
     cursor: Position,
     pressed_keys: HashSet<VirtualKeyCode>,
+    mouse_down: bool,
     player: Position, // TODO: this needs to be extracted since it is not at all graphics related
     surface: wgpu::Surface,
     device: wgpu::Device,
@@ -71,9 +72,10 @@ impl Vertex {
 }
 
 const SQUARE_SIZE: f32 = 96.0;
-const DEFAULT_UPDATE_TIME: u32 = refresh_time!(60.0); // TODO: Detect and use system FPS
+const DEFAULT_UPDATE_TIME: u32 = refresh_time!(60.0); // TODO(1): Detect and use system FPS
 const SPEED: f64 = 0.015;
 
+// TODO(3): Fix performance on mobile wasm
 pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
     let mut state = GraphicState::new(&window).await;
 
@@ -122,10 +124,12 @@ pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
                     } => state.handle_key_release(&keycode),
                     _ => {}
                 },
-                WindowEvent::CursorMoved { position, .. } => {
-                    state.handle_cursor(position);
-                    window.request_redraw();
-                }
+                WindowEvent::CursorMoved { position, .. } => state.handle_cursor(position),
+                WindowEvent::MouseInput {
+                    state: mouse_state,
+                    button: MouseButton::Left,
+                    ..
+                } => state.handle_mouse_input(&mouse_state),
                 _ => {}
             },
             Event::RedrawRequested(_) => state.handle_redraw(),
@@ -174,6 +178,7 @@ impl GraphicState {
             scale_factor,
             cursor: Position { x: 0.0, y: 0.0 },
             pressed_keys: HashSet::new(),
+            mouse_down: false,
             player,
             surface,
             device,
@@ -190,7 +195,10 @@ impl GraphicState {
     }
 
     fn update(&mut self, window: &Window) {
-        // TODO: Perform some sort of mutex lock to prevent calculating next frame when last frame wasn't done yet
+        // TODO(2): - Perform some sort of mutex lock to prevent calculating next frame when last frame wasn't done yet
+        //          - Clean up the duplication
+        //          - Fix diagonal movement zoomy-speeds
+        //          - Add threshold zones for touch/click movement & resolve speed up when moving mouse issue
         for key in self.pressed_keys.iter() {
             match key {
                 VirtualKeyCode::Left => self.player.x -= SPEED,
@@ -200,7 +208,19 @@ impl GraphicState {
                 _ => {}
             }
         }
-        if self.pressed_keys.len() > 0 {
+        if self.mouse_down {
+            if self.cursor.x > 0.5 {
+                self.player.x += SPEED;
+            } else if self.cursor.x < 0.5 {
+                self.player.x -= SPEED;
+            }
+            if self.cursor.y > 0.5 {
+                self.player.y -= SPEED;
+            } else if self.cursor.y < 0.5 {
+                self.player.y += SPEED;
+            }
+        }
+        if self.mouse_down || self.pressed_keys.len() > 0 {
             self.refresh_buffers();
             window.request_redraw();
         }
@@ -222,6 +242,10 @@ impl GraphicState {
 
     fn handle_key_release(&mut self, keycode: &VirtualKeyCode) {
         self.pressed_keys.remove(keycode);
+    }
+
+    fn handle_mouse_input(&mut self, state: &ElementState) {
+        self.mouse_down = *state == ElementState::Pressed;
     }
 
     /**
@@ -276,14 +300,6 @@ impl GraphicState {
      * Handle redraw events
      */
     fn handle_redraw(&self) {
-        // Determine background color based on cursor position
-        let background_color = wgpu::Color {
-            r: self.cursor.x,
-            g: self.cursor.y * self.cursor.x,
-            b: self.cursor.y,
-            a: 1.0,
-        };
-
         log::debug!("Redraw!!");
         // Get a TextureSurface "frame" from the surface that we can render to
         let frame = self
@@ -314,7 +330,7 @@ impl GraphicState {
                     // What to do with colors on the screen
                     ops: wgpu::Operations {
                         // What to do with colors in previous frame, in this case: Clear to BLACK
-                        load: wgpu::LoadOp::Clear(background_color),
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
                         // Wether to store the render result or not
                         store: true,
                     },
@@ -411,8 +427,7 @@ fn init_texture(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
 ) -> (wgpu::BindGroup, wgpu::BindGroupLayout) {
-    // TODO: Consider loading in images differently on desktop vs wasm
-    // Load in bytes from file
+    // Load in bytes from file (good enough for now since all our textures will be very small)
     let diffuse_bytes = include_bytes!("textures/atlas-1.png");
     // Turn the bytes into an image
     let diffuse_image = image::load_from_memory(diffuse_bytes).expect("Failed to load image");
