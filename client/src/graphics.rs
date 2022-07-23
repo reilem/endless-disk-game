@@ -14,7 +14,7 @@ use winit::{
 /// Take an fps (Frames Per Second) float number and returns the amount of nanoseconds between updates
 /// required to achieve that fps.
 macro_rules! refresh_time {
-    ( $fps:literal ) => {
+    ( $fps:expr ) => {
         (1000000000.0 as f64 / $fps as f64) as u32
     };
 }
@@ -72,12 +72,18 @@ impl Vertex {
 }
 
 const SQUARE_SIZE: f32 = 96.0;
-const DEFAULT_UPDATE_TIME: u32 = refresh_time!(60.0); // TODO(1): Detect and use system FPS
+const DEFAULT_UPDATE_TIME: u32 = refresh_time!(60.0);
 const SPEED: f64 = 0.015;
 
 // TODO(3): Fix performance on mobile wasm
 pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
     let mut state = GraphicState::new(&window).await;
+
+    let update_wait_time = window
+        .current_monitor()
+        .and_then(|monitor| monitor.video_modes().next())
+        .and_then(|mode| Some(refresh_time!(mode.refresh_rate())))
+        .unwrap_or(DEFAULT_UPDATE_TIME);
 
     log::info!("Starting event loop");
     event_loop.run(move |event, _, control_flow| {
@@ -89,7 +95,7 @@ pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
         state.update(&window);
 
         let next_update = Instant::now()
-            .checked_add(Duration::new(0, DEFAULT_UPDATE_TIME))
+            .checked_add(Duration::new(0, update_wait_time))
             .expect("Failed to set next update time");
         *control_flow = ControlFlow::WaitUntil(next_update);
         match event {
