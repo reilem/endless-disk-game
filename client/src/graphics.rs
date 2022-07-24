@@ -94,7 +94,6 @@ fn next_update(wait_time: u32) -> Instant {
         .expect("Failed to set next update time")
 }
 
-// TODO(1): Fix performance on mobile wasm
 pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
     let mut state = GraphicState::new(&window).await;
 
