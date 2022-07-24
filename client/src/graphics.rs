@@ -101,7 +101,7 @@ pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
     let update_wait_time = window
         .current_monitor()
         .and_then(|monitor| monitor.video_modes().next())
-        .and_then(|mode| Some(refresh_time!(mode.refresh_rate())))
+        .map(|mode| refresh_time!(mode.refresh_rate()))
         .unwrap_or(DEFAULT_UPDATE_TIME);
 
     log::info!("Starting event loop");
@@ -135,7 +135,7 @@ pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
                 WindowEvent::ScaleFactorChanged {
                     new_inner_size,
                     scale_factor,
-                } => state.handle_resize(&new_inner_size, Some(scale_factor), &window),
+                } => state.handle_resize(new_inner_size, Some(scale_factor), &window),
                 WindowEvent::CloseRequested
                 | WindowEvent::KeyboardInput {
                     input:
@@ -180,7 +180,7 @@ impl GraphicState {
     async fn new(window: &Window) -> Self {
         let player = Position { x: 0.0, y: 0.0 };
         // Create size, instance, surface & adapter
-        let (size, scale_factor, surface, adapter) = init_adapter(&window).await;
+        let (size, scale_factor, surface, adapter) = init_adapter(window).await;
         // Create the logical device and command queue
         let (device, queue) = init_device_queue(&adapter).await;
         // Get best texture format for adapter
@@ -275,8 +275,8 @@ impl GraphicState {
                     move_direction = Some(MoveDirection::Up);
                 }
             }
-            match &move_direction {
-                Some(direction) => match direction {
+            if let Some(direction) = &move_direction {
+                match direction {
                     MoveDirection::Left => self.player.x -= delta_space,
                     MoveDirection::DownLeft => {
                         self.player.x -= delta_space / 2.0;
@@ -297,8 +297,7 @@ impl GraphicState {
                         self.player.x -= delta_space / 2.0;
                         self.player.y += delta_space / 2.0;
                     }
-                },
-                _ => {}
+                }
             }
         } else if self.mouse_down {
             let x = self.cursor.x;
@@ -342,7 +341,7 @@ impl GraphicState {
     }
 
     fn handle_key_press(&mut self, keycode: &VirtualKeyCode) {
-        self.pressed_keys.insert(keycode.clone());
+        self.pressed_keys.insert(*keycode);
     }
 
     fn handle_key_release(&mut self, keycode: &VirtualKeyCode) {
@@ -701,7 +700,11 @@ fn init_render_pipeline(
  * Always returns an uneven number, adds one if even to ensure full grid coverage.
  */
 fn keep_uneven(value: u32) -> u32 {
-    return if value % 2 == 0 { value + 1 } else { value };
+    if value % 2 == 0 {
+        value + 1
+    } else {
+        value
+    }
 }
 
 /**
@@ -756,12 +759,12 @@ fn texture_coords(index: u16) -> [[f32; 2]; 4] {
     let tex_width = 1.0 / 3.0;
     let tex_start = (index as f32) * tex_width;
     let tex_end = tex_start + (1.0 * tex_width);
-    return [
+    [
         [tex_start, 1.0],
         [tex_end, 1.0],
         [tex_end, 0.0],
         [tex_start, 0.0],
-    ];
+    ]
 }
 
 fn vertices_for_coords(x: f32, y: f32, tex_index: u16) -> Vec<Vertex> {
@@ -843,8 +846,8 @@ fn init_vertex_index_buffer(
 ) -> (wgpu::Buffer, wgpu::Buffer, u32) {
     let mut vertices: Vec<Vertex> = Vec::new();
     let mut indices: Vec<u16> = Vec::new();
-    let horizontal_len = number_of_squares_horionztally(&size) as f32;
-    let vertical_len = number_of_squares_vertically(&size) as f32;
+    let horizontal_len = number_of_squares_horionztally(size) as f32;
+    let vertical_len = number_of_squares_vertically(size) as f32;
 
     let y_start = grid_range_start(vertical_len, player.y as f32);
     let y_end = grid_range_end(vertical_len, player.y as f32);
@@ -973,7 +976,7 @@ fn init_projection_bind_group(
     layout: &wgpu::BindGroupLayout,
 ) -> wgpu::BindGroup {
     device.create_bind_group(&wgpu::BindGroupDescriptor {
-        layout: &layout,
+        layout,
         entries: &[wgpu::BindGroupEntry {
             binding: 0,
             resource: projection_buffer.as_entire_binding(),

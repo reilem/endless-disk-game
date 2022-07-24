@@ -1,0 +1,11 @@
+[package]
+name = "endless_game_server"
+description = "A server prototype for a simple rust-based MMO"
+version = "0.1.0"
+authors = ["reilemx@gmail.com"]
+categories = ["games"]
+readme = "README.md"
+edition = "2021"
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]

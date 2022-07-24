@@ -12,5 +12,5 @@ fn rust_test() {
 // This runs a unit test in the browser, so it can use browser APIs.
 #[wasm_bindgen_test]
 fn web_test() {
-    assert_eq!(1, 1);
+    // assert_eq!(2, 1 + 1);
 }
