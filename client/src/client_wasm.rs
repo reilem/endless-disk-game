@@ -15,7 +15,7 @@ fn init_logs() {
     console_error_panic_hook::set_once();
     // Start the logger if enabled
     #[cfg(feature = "console_log")]
-    console_log::init_with_level(log::Level::Info).unwrap(); // INFO can cause frame drops in web
+    console_log::init_with_level(log::Level::Warn).unwrap(); // INFO can cause frame drops in web
 }
 
 /**
