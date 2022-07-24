@@ -1,7 +1,4 @@
 {
-  "rust-analyzer.linkedProjects": [
-    "./client/Cargo.toml",
-  ],
   "editor.tabSize": 4,
   "[rust]": {
     "editor.defaultFormatter": "rust-lang.rust-analyzer",
