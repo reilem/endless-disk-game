@@ -117,6 +117,10 @@ pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
                     *control_flow = ControlFlow::WaitUntil(next_update(update_wait_time))
                 }
                 StartCause::ResumeTimeReached { .. } => {
+                    // We use our own custom time check because the ResumeTimeReached time is based on loop events.
+                    // If you have lots of interrupting events (e.g. mouse movement) then this will interrupt the WaitUntil and
+                    // create a new "start" time. So when the resume event is reached the diff between the "start" time and
+                    // requested_resume could be very small because 1ms earlier a mouse event had occurred.
                     let now = Instant::now();
                     state.update(&window, now.duration_since(last_update));
                     *control_flow = ControlFlow::WaitUntil(next_update(update_wait_time));
@@ -302,16 +306,16 @@ impl GraphicState {
             // Project the coordinates into clip-space
             // Old space: top-left: (0,0), bottom-right: (1,1)
             // Clip space: top-left (-1,1), bottom-right: (1,-1)
-            let d_x = (x - 0.5) * 2.0;
-            let d_y = (y - 0.5) * -2.0;
+            let clip_x = (x - 0.5) * 2.0;
+            let clip_y = (y - 0.5) * -2.0;
             // Cursor deadzone is at -0.25 to 0.25
             // If the cursor is in this deadzone the sprite will move slower the closer the cursor is
             // and faster the further away the cursor is. Beyond the deadzone the sprite will move at max speed.
             let deadzone_percentage = 0.25;
-            let threshold_x = (d_x / deadzone_percentage).min(1.0).max(-1.0);
-            let threshold_y = (d_y / deadzone_percentage).min(1.0).max(-1.0);
+            let threshold_x = (clip_x / deadzone_percentage).min(1.0).max(-1.0);
+            let threshold_y = (clip_y / deadzone_percentage).min(1.0).max(-1.0);
             // Calculate the relative weights to be used to correct the x and y movement components to ensure constant speed
-            let alpha = d_y / d_x;
+            let alpha = clip_y / clip_x;
             let k_x = 1.0 / (1.0 + alpha.abs());
             let k_y = 1.0 - k_x;
             // Multiply the thresholded values by these weights to find the true x and y movement components
