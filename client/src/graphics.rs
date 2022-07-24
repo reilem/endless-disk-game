@@ -77,10 +77,17 @@ const SQUARE_SIZE: f32 = 96.0;
 const DEFAULT_UPDATE_TIME: u32 = refresh_time!(60.0);
 const SPEED: f64 = 0.004;
 
+fn next_update(wait_time: u32) -> Instant {
+    Instant::now()
+        .checked_add(Duration::new(0, wait_time))
+        .expect("Failed to set next update time")
+}
+
 // TODO(3): Fix performance on mobile wasm
 pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
     let mut state = GraphicState::new(&window).await;
 
+    let mut last_update = Instant::now();
     let update_wait_time = window
         .current_monitor()
         .and_then(|monitor| monitor.video_modes().next())
@@ -94,19 +101,16 @@ pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
         // the resources are properly cleaned up.
         let _ = &state;
 
-        let next_update = Instant::now()
-            .checked_add(Duration::new(0, update_wait_time))
-            .expect("Failed to set next update time");
-
         match event {
             Event::NewEvents(start_cause) => match start_cause {
-                StartCause::Init => *control_flow = ControlFlow::WaitUntil(next_update),
-                StartCause::ResumeTimeReached {
-                    start,
-                    requested_resume,
-                } => {
-                    state.update(&window, requested_resume.duration_since(start));
-                    *control_flow = ControlFlow::WaitUntil(next_update);
+                StartCause::Init => {
+                    *control_flow = ControlFlow::WaitUntil(next_update(update_wait_time))
+                }
+                StartCause::ResumeTimeReached { .. } => {
+                    let now = Instant::now();
+                    state.update(&window, now.duration_since(last_update));
+                    *control_flow = ControlFlow::WaitUntil(next_update(update_wait_time));
+                    last_update = now;
                 }
                 _ => {}
             },
@@ -217,7 +221,7 @@ impl GraphicState {
         // TODO(2): - Perform some sort of mutex lock to prevent calculating next frame when last frame wasn't done yet
         //          - Clean up the duplication
         //          - Fix diagonal movement zoomy-speeds
-        //          - Add threshold zones for touch/click movement & resolve speed up when moving mouse issue
+        //          - Add threshold zones for touch/click movement
         for key in self.pressed_keys.iter() {
             match key {
                 VirtualKeyCode::Left => self.player.x -= SPEED * delta_time,
