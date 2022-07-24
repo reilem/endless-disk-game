@@ -305,33 +305,19 @@ impl GraphicState {
             // Clip space: top-left (-1,1), bottom-right: (1,-1)
             let d_x = (x - 0.5) * 2.0;
             let d_y = (y - 0.5) * -2.0;
-            // Increment barrier is at -0.25 to 0.25, in this range values will be between 0.0 and 1.0 (or -1.0)
-            // Beyond the barrier values should be -1.0 (for left/down) or 1.0 (for right/up)
-            // let barrier = 0.25;
-            // let threshold_x = (d_x / barrier).min(1.0).max(-1.0);
-            // let threshold_y = (d_y / barrier).min(1.0).max(-1.0);
-            // log::info!(
-            //     "dx: {}, threshold_x x: {}, dy: {}, threshold_y y: {}",
-            //     d_x,
-            //     threshold_x,
-            //     d_y,
-            //     threshold_y
-            // );
+            // Cursor deadzone is at -0.25 to 0.25
+            // If the cursor is in this deadzone the sprite will move slower the closer the cursor is
+            // and faster the further away the cursor is. Beyond the deadzone the sprite will move at max speed.
+            let deadzone_percentage = 0.25;
+            let threshold_x = (d_x / deadzone_percentage).min(1.0).max(-1.0);
+            let threshold_y = (d_y / deadzone_percentage).min(1.0).max(-1.0);
             // Calculate the relative weights to be used to correct the x and y movement components to ensure constant speed
             let alpha = d_y / d_x;
             let k_x = 1.0 / (1.0 + alpha.abs());
             let k_y = 1.0 - k_x;
-            let corrected_x = k_x * d_x;
-            let corrected_y = k_y * d_y;
-            log::info!(
-                "alpha: {}, k_x: {}, corrected_x: {}, k_y: {}, corrected_y: {}",
-                alpha,
-                k_x,
-                corrected_x,
-                k_y,
-                corrected_y
-            );
-            // TODO(0): reach max speed once mouse is quarter way away from sprite
+            // Multiply the thresholded values by these weights to find the true x and y movement components
+            let corrected_x = k_x * threshold_x;
+            let corrected_y = k_y * threshold_y;
             self.player.x += corrected_x * delta_space;
             self.player.y += corrected_y * delta_space;
         }
