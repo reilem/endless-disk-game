@@ -6,7 +6,9 @@ use wgpu::{
 };
 use winit::{
     dpi::{LogicalPosition, LogicalSize, PhysicalPosition, PhysicalSize},
-    event::{ElementState, Event, KeyboardInput, MouseButton, VirtualKeyCode, WindowEvent},
+    event::{
+        ElementState, Event, KeyboardInput, MouseButton, StartCause, VirtualKeyCode, WindowEvent,
+    },
     event_loop::{ControlFlow, EventLoop},
     window::Window,
 };
@@ -73,7 +75,7 @@ impl Vertex {
 
 const SQUARE_SIZE: f32 = 96.0;
 const DEFAULT_UPDATE_TIME: u32 = refresh_time!(60.0);
-const SPEED: f64 = 0.015;
+const SPEED: f64 = 0.004;
 
 // TODO(3): Fix performance on mobile wasm
 pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
@@ -92,13 +94,22 @@ pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
         // the resources are properly cleaned up.
         let _ = &state;
 
-        state.update(&window);
-
         let next_update = Instant::now()
             .checked_add(Duration::new(0, update_wait_time))
             .expect("Failed to set next update time");
-        *control_flow = ControlFlow::WaitUntil(next_update);
+
         match event {
+            Event::NewEvents(start_cause) => match start_cause {
+                StartCause::Init => *control_flow = ControlFlow::WaitUntil(next_update),
+                StartCause::ResumeTimeReached {
+                    start,
+                    requested_resume,
+                } => {
+                    state.update(&window, requested_resume.duration_since(start));
+                    *control_flow = ControlFlow::WaitUntil(next_update);
+                }
+                _ => {}
+            },
             Event::WindowEvent {
                 event, window_id, ..
             } if window_id == window.id() => match event {
@@ -131,6 +142,7 @@ pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
                     _ => {}
                 },
                 WindowEvent::CursorMoved { position, .. } => state.handle_cursor(position),
+                // TODO(0): Investigate why this is interrupting update cycles
                 WindowEvent::MouseInput {
                     state: mouse_state,
                     button: MouseButton::Left,
@@ -200,30 +212,31 @@ impl GraphicState {
         }
     }
 
-    fn update(&mut self, window: &Window) {
+    fn update(&mut self, window: &Window, time_elapsed: Duration) {
+        let delta_time = time_elapsed.as_millis() as f64;
         // TODO(2): - Perform some sort of mutex lock to prevent calculating next frame when last frame wasn't done yet
         //          - Clean up the duplication
         //          - Fix diagonal movement zoomy-speeds
         //          - Add threshold zones for touch/click movement & resolve speed up when moving mouse issue
         for key in self.pressed_keys.iter() {
             match key {
-                VirtualKeyCode::Left => self.player.x -= SPEED,
-                VirtualKeyCode::Down => self.player.y -= SPEED,
-                VirtualKeyCode::Right => self.player.x += SPEED,
-                VirtualKeyCode::Up => self.player.y += SPEED,
+                VirtualKeyCode::Left => self.player.x -= SPEED * delta_time,
+                VirtualKeyCode::Down => self.player.y -= SPEED * delta_time,
+                VirtualKeyCode::Right => self.player.x += SPEED * delta_time,
+                VirtualKeyCode::Up => self.player.y += SPEED * delta_time,
                 _ => {}
             }
         }
         if self.mouse_down {
             if self.cursor.x > 0.5 {
-                self.player.x += SPEED;
+                self.player.x += SPEED * delta_time;
             } else if self.cursor.x < 0.5 {
-                self.player.x -= SPEED;
+                self.player.x -= SPEED * delta_time;
             }
             if self.cursor.y > 0.5 {
-                self.player.y -= SPEED;
+                self.player.y -= SPEED * delta_time;
             } else if self.cursor.y < 0.5 {
-                self.player.y += SPEED;
+                self.player.y += SPEED * delta_time;
             }
         }
         if self.mouse_down || self.pressed_keys.len() > 0 {
