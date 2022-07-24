@@ -9,3 +9,11 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+# Logger that can be configured from environment variables
+env_logger = "0.9"
+# Logging library interface
+log = "0.4"
+# Web sockets
+tungstenite = "0.17.3"
+# Asynchronous bus
+bus = "2.3.0"
