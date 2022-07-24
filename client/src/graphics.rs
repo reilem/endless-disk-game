@@ -26,6 +26,17 @@ type WindowSize = LogicalSize<u32>;
 // TODO: Refactor this into multiple files
 // Keeping as-is for now to make sure that when we do the division we have all the information required
 
+enum MoveDirection {
+    Left,
+    DownLeft,
+    Down,
+    DownRight,
+    Right,
+    UpRight,
+    Up,
+    UpLeft,
+}
+
 #[derive(Debug)]
 struct Position {
     x: f64,
@@ -83,7 +94,7 @@ fn next_update(wait_time: u32) -> Instant {
         .expect("Failed to set next update time")
 }
 
-// TODO(3): Fix performance on mobile wasm
+// TODO(1): Fix performance on mobile wasm
 pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
     let mut state = GraphicState::new(&window).await;
 
@@ -146,7 +157,6 @@ pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
                     _ => {}
                 },
                 WindowEvent::CursorMoved { position, .. } => state.handle_cursor(position),
-                // TODO(0): Investigate why this is interrupting update cycles
                 WindowEvent::MouseInput {
                     state: mouse_state,
                     button: MouseButton::Left,
@@ -218,32 +228,115 @@ impl GraphicState {
 
     fn update(&mut self, window: &Window, time_elapsed: Duration) {
         let delta_time = time_elapsed.as_millis() as f64;
-        // TODO(2): - Perform some sort of mutex lock to prevent calculating next frame when last frame wasn't done yet
-        //          - Clean up the duplication
-        //          - Fix diagonal movement zoomy-speeds
-        //          - Add threshold zones for touch/click movement
-        for key in self.pressed_keys.iter() {
-            match key {
-                VirtualKeyCode::Left => self.player.x -= SPEED * delta_time,
-                VirtualKeyCode::Down => self.player.y -= SPEED * delta_time,
-                VirtualKeyCode::Right => self.player.x += SPEED * delta_time,
-                VirtualKeyCode::Up => self.player.y += SPEED * delta_time,
+        let mut move_direction: Option<MoveDirection> = None;
+        let delta_space = SPEED * delta_time;
+        if !self.pressed_keys.is_empty() {
+            if self.pressed_keys.contains(&VirtualKeyCode::Left) {
+                if self.pressed_keys.contains(&VirtualKeyCode::Up) {
+                    move_direction = Some(MoveDirection::UpLeft);
+                } else if self.pressed_keys.contains(&VirtualKeyCode::Down) {
+                    move_direction = Some(MoveDirection::DownLeft);
+                } else if self.pressed_keys.contains(&VirtualKeyCode::Right) {
+                    move_direction = None;
+                } else {
+                    move_direction = Some(MoveDirection::Left);
+                }
+            } else if self.pressed_keys.contains(&VirtualKeyCode::Down) {
+                if self.pressed_keys.contains(&VirtualKeyCode::Up) {
+                    move_direction = None;
+                } else if self.pressed_keys.contains(&VirtualKeyCode::Left) {
+                    move_direction = Some(MoveDirection::DownLeft);
+                } else if self.pressed_keys.contains(&VirtualKeyCode::Right) {
+                    move_direction = Some(MoveDirection::DownRight);
+                } else {
+                    move_direction = Some(MoveDirection::Down);
+                }
+            } else if self.pressed_keys.contains(&VirtualKeyCode::Right) {
+                if self.pressed_keys.contains(&VirtualKeyCode::Up) {
+                    move_direction = Some(MoveDirection::UpRight);
+                } else if self.pressed_keys.contains(&VirtualKeyCode::Left) {
+                    move_direction = None;
+                } else if self.pressed_keys.contains(&VirtualKeyCode::Down) {
+                    move_direction = Some(MoveDirection::DownRight);
+                } else {
+                    move_direction = Some(MoveDirection::Right);
+                }
+            } else if self.pressed_keys.contains(&VirtualKeyCode::Up) {
+                if self.pressed_keys.contains(&VirtualKeyCode::Right) {
+                    move_direction = Some(MoveDirection::UpRight);
+                } else if self.pressed_keys.contains(&VirtualKeyCode::Down) {
+                    move_direction = None;
+                } else if self.pressed_keys.contains(&VirtualKeyCode::Left) {
+                    move_direction = Some(MoveDirection::UpLeft);
+                } else {
+                    move_direction = Some(MoveDirection::Up);
+                }
+            }
+            match &move_direction {
+                Some(direction) => match direction {
+                    MoveDirection::Left => self.player.x -= delta_space,
+                    MoveDirection::DownLeft => {
+                        self.player.x -= delta_space / 2.0;
+                        self.player.y -= delta_space / 2.0;
+                    }
+                    MoveDirection::Down => self.player.y -= delta_space,
+                    MoveDirection::DownRight => {
+                        self.player.x += delta_space / 2.0;
+                        self.player.y -= delta_space / 2.0;
+                    }
+                    MoveDirection::Right => self.player.x += delta_space,
+                    MoveDirection::UpRight => {
+                        self.player.x += delta_space / 2.0;
+                        self.player.y += delta_space / 2.0;
+                    }
+                    MoveDirection::Up => self.player.y += delta_space,
+                    MoveDirection::UpLeft => {
+                        self.player.x -= delta_space / 2.0;
+                        self.player.y += delta_space / 2.0;
+                    }
+                },
                 _ => {}
             }
+        } else if self.mouse_down {
+            let x = self.cursor.x;
+            let y = self.cursor.y;
+            // Project the coordinates into clip-space
+            // Old space: top-left: (0,0), bottom-right: (1,1)
+            // Clip space: top-left (-1,1), bottom-right: (1,-1)
+            let d_x = (x - 0.5) * 2.0;
+            let d_y = (y - 0.5) * -2.0;
+            // Increment barrier is at -0.25 to 0.25, in this range values will be between 0.0 and 1.0 (or -1.0)
+            // Beyond the barrier values should be -1.0 (for left/down) or 1.0 (for right/up)
+            // let barrier = 0.25;
+            // let threshold_x = (d_x / barrier).min(1.0).max(-1.0);
+            // let threshold_y = (d_y / barrier).min(1.0).max(-1.0);
+            // log::info!(
+            //     "dx: {}, threshold_x x: {}, dy: {}, threshold_y y: {}",
+            //     d_x,
+            //     threshold_x,
+            //     d_y,
+            //     threshold_y
+            // );
+            // Calculate the relative weights to be used to correct the x and y movement components to ensure constant speed
+            let alpha = d_y / d_x;
+            let k_x = 1.0 / (1.0 + alpha.abs());
+            let k_y = 1.0 - k_x;
+            let corrected_x = k_x * d_x;
+            let corrected_y = k_y * d_y;
+            log::info!(
+                "alpha: {}, k_x: {}, corrected_x: {}, k_y: {}, corrected_y: {}",
+                alpha,
+                k_x,
+                corrected_x,
+                k_y,
+                corrected_y
+            );
+            // TODO(0): reach max speed once mouse is quarter way away from sprite
+            self.player.x += corrected_x * delta_space;
+            self.player.y += corrected_y * delta_space;
         }
-        if self.mouse_down {
-            if self.cursor.x > 0.5 {
-                self.player.x += SPEED * delta_time;
-            } else if self.cursor.x < 0.5 {
-                self.player.x -= SPEED * delta_time;
-            }
-            if self.cursor.y > 0.5 {
-                self.player.y -= SPEED * delta_time;
-            } else if self.cursor.y < 0.5 {
-                self.player.y += SPEED * delta_time;
-            }
-        }
-        if self.mouse_down || self.pressed_keys.len() > 0 {
+
+        if move_direction.is_some() || self.mouse_down {
             self.refresh_buffers();
             window.request_redraw();
         }
