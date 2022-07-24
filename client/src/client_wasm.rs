@@ -25,10 +25,10 @@ fn disable_touch_events(element: &Element) {
     let closure = Closure::wrap(Box::new(|event: web_sys::Event| {
         event.prevent_default();
     }) as Box<dyn Fn(web_sys::Event)>);
-    add_event_listener(&element, "touchstart", &closure);
-    add_event_listener(&element, "touchmove", &closure);
-    add_event_listener(&element, "touchend", &closure);
-    add_event_listener(&element, "touchcancel", &closure);
+    add_event_listener(element, "touchstart", &closure);
+    add_event_listener(element, "touchmove", &closure);
+    add_event_listener(element, "touchend", &closure);
+    add_event_listener(element, "touchcancel", &closure);
     // If you don't add this the closure will be destroyed and do nothing
     closure.forget();
 }
@@ -38,19 +38,19 @@ fn disable_touch_events(element: &Element) {
 fn add_event_listener<T: ?Sized>(element: &Element, listener_name: &str, closure: &Closure<T>) {
     element
         .add_event_listener_with_callback(listener_name, closure.as_ref().unchecked_ref())
-        .expect(format!("Failed to add {} listener", listener_name).as_str());
+        .unwrap_or_else(|err| panic!("Failed to add {} listener: {:?}", listener_name, err));
 }
 
 fn resize_window(window: &Window, web_window: &web_sys::Window) {
     window.set_inner_size(LogicalSize::new(
         web_window
             .inner_width()
-            .unwrap_or(wasm_bindgen::JsValue::from(1024))
+            .unwrap_or_else(|_err| wasm_bindgen::JsValue::from(1024))
             .as_f64()
             .map_or(1024, |f| f as u32),
         web_window
             .inner_height()
-            .unwrap_or(wasm_bindgen::JsValue::from(768))
+            .unwrap_or_else(|_err| wasm_bindgen::JsValue::from(768))
             .as_f64()
             .map_or(768, |f| f as u32),
     ));
