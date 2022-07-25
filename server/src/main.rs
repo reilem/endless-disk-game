@@ -1,41 +1,48 @@
-use std::{
-    thread::{sleep, spawn},
-    time::Duration,
-};
+use std::{thread::sleep, time::Duration};
 
-use bus::{Bus, BusReader};
+use tokio::sync::broadcast;
 
-fn main() {
+#[tokio::main]
+async fn main() {
     // Initialise logging
     env_logger::init();
 
-    log::info!("Setting up timer...");
+    let (tx, _rx) = broadcast::channel::<u128>(1024);
 
-    let mut bus = Bus::new(10);
-    let mut receivers: Vec<BusReader<u128>> = vec![];
-
-    for _ in 0..5 {
-        receivers.push(bus.add_rx());
-    }
-
-    spawn(move || {
+    let timer_tx = tx.clone();
+    tokio::spawn(async move {
+        sleep(Duration::from_millis(1000));
         let mut count: u128 = 0;
+        log::info!("Starting timer...");
         loop {
             log::info!("Sending ping: {}", count);
-            bus.broadcast(count);
+            timer_tx
+                .send(count)
+                .unwrap_or_else(|err| panic!("Failed to send message count: {} {:?}", count, err));
             count += 1;
-            sleep(Duration::from_millis(500));
+            sleep(Duration::from_millis(1000));
         }
     });
 
     let mut threads = vec![];
-    for mut rx in receivers {
-        let thread = spawn(move || loop {
-            if let Ok(ping) = rx.recv() {
-                log::info!("Ping: {}", ping);
+    for thread_count in 0..30 {
+        let mut rx = tx.clone().subscribe();
+        let t = tokio::spawn(async move {
+            log::info!("Starting thread: {}", thread_count);
+            loop {
+                let ping = rx
+                    .recv()
+                    .await
+                    .unwrap_or_else(|err| panic!("Error receiving ping: {:?}", err));
+                log::info!("Thread {} received: {}", thread_count, ping);
             }
         });
-        threads.push(thread);
+        threads.push(t);
+    }
+
+    for t in threads {
+        t.await
+            .unwrap_or_else(|err| panic!("Error awaiting thread: {:?}", err));
     }
     // log::info!("Setting up tcp listener...");
 
@@ -67,9 +74,4 @@ fn main() {
     //     });
     //     threads.push(thread);
     // }
-
-    for t in threads {
-        t.join()
-            .unwrap_or_else(|err| panic!("Cannot join thread: {:?}", err));
-    }
 }

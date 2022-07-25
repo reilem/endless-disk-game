@@ -13,7 +13,7 @@ edition = "2021"
 env_logger = "0.9"
 # Logging library interface
 log = "0.4"
+# Asynchronous I/O and multithreading scheduler
+tokio = { version = "1.20.1", features = ["full"] }
 # Web sockets
-tungstenite = "0.17.3"
-# Asynchronous bus
-bus = "2.3.0"
+tokio-tungstenite = "0.17.2"
