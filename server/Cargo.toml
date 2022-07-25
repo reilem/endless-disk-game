@@ -17,3 +17,5 @@ log = "0.4"
 tokio = { version = "1.20.1", features = ["full"] }
 # Web sockets
 tokio-tungstenite = "0.17.2"
+# Future utilities
+futures-util = { version = "0.3", features = ["sink", "std"] }

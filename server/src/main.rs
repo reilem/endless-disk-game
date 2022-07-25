@@ -1,6 +1,8 @@
+use futures_util::stream::StreamExt;
+use futures_util::SinkExt;
 use std::{thread::sleep, time::Duration};
-
-use tokio::sync::broadcast;
+use tokio::{net::TcpListener, sync::broadcast};
+use tokio_tungstenite::tungstenite;
 
 #[tokio::main]
 async fn main() {
@@ -24,54 +26,45 @@ async fn main() {
         }
     });
 
-    let mut threads = vec![];
-    for thread_count in 0..30 {
+    log::info!("Setting up tcp listener...");
+
+    let server = TcpListener::bind("127.0.0.1:3001")
+        .await
+        .unwrap_or_else(|err| panic!("Failed to bind tcp listener: {:?}", err));
+
+    while let Ok((stream, addr)) = server.accept().await {
         let mut rx = tx.clone().subscribe();
-        let t = tokio::spawn(async move {
-            log::info!("Starting thread: {}", thread_count);
-            loop {
-                let ping = rx
-                    .recv()
+        tokio::spawn(async move {
+            let websocket = tokio_tungstenite::accept_async(stream)
+                .await
+                .unwrap_or_else(|err| panic!("Failled to accept websocket: {:?}", err));
+            let (mut outgoing, mut incoming) = websocket.split();
+
+            if let Some(Ok(msg)) = incoming.next().await {
+                if let Ok(text) = msg.to_text() {
+                    if text.to_lowercase() != "start" {
+                        log::warn!("Received invalid start");
+                        return;
+                    }
+                }
+                log::info!("Received start!");
+                outgoing
+                    .send(tungstenite::Message::Text("Starting updates".to_owned()))
                     .await
-                    .unwrap_or_else(|err| panic!("Error receiving ping: {:?}", err));
-                log::info!("Thread {} received: {}", thread_count, ping);
+                    .unwrap_or_else(|err| log::warn!("Failed to send message: {:?}", err));
+
+                loop {
+                    log::info!("{:?} waiting for ping...", addr);
+                    // Broadcast is meant for sync stuff and we are using it here concurrently which is not allowed
+                    // so his kinda is broken when used async stuff
+                    let msg = rx.recv().await.unwrap(); // TODO: Fix this using the rx and tx in tokio_tungstenite examples
+                    log::info!("{:?} got ping: {}", addr, msg);
+                    outgoing
+                        .send(tungstenite::Message::Text(format!("Ping: {}", msg)))
+                        .await
+                        .unwrap_or_else(|err| log::warn!("Failed to send message: {:?}", err));
+                }
             }
         });
-        threads.push(t);
     }
-
-    for t in threads {
-        t.await
-            .unwrap_or_else(|err| panic!("Error awaiting thread: {:?}", err));
-    }
-    // log::info!("Setting up tcp listener...");
-
-    // let server = TcpListener::bind("127.0.0.1:3001")
-    //     .unwrap_or_else(|err| panic!("Failed to bind tcp listener: {:?}", err));
-    // let mut index = 0;
-    // for stream in server.incoming() {
-    //     let mut next_rx = receivers[index];
-    //     let thread = spawn(move || {
-    //         let mut websocket = tungstenite::accept(
-    //             stream.unwrap_or_else(|err| panic!("Failed to get stream: {:?}", err)),
-    //         )
-    //         .unwrap_or_else(|err| panic!("Failled to accept websocket: {:?}", err));
-
-    //         let msg = websocket
-    //             .read_message()
-    //             .unwrap_or_else(|err| panic!("Failed to read message: {:?}", err));
-    //         log::info!("Received message: {:?}, sending response;", msg);
-    //         let start_response = tungstenite::Message::Text("Starting Thread".to_owned());
-    //         websocket
-    //             .write_message(start_response)
-    //             .expect("Failed to write message");
-
-    //         for ping in next_rx.iter() {
-    //             websocket
-    //                 .write_message(tungstenite::Message::Text(format!("Ping: {:?}", ping)))
-    //                 .unwrap_or_else(|err| panic!("Failed to write message: {:?}", err));
-    //         }
-    //     });
-    //     threads.push(thread);
-    // }
 }
