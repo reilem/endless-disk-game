@@ -2,7 +2,10 @@ use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
 use tokio::{net::TcpListener, sync::broadcast, time::sleep};
-use tokio_tungstenite::tungstenite;
+use tokio_tungstenite::tungstenite::{
+    self,
+    protocol::{frame::coding::CloseCode, CloseFrame},
+};
 
 #[tokio::main]
 async fn main() {
@@ -17,7 +20,7 @@ async fn main() {
         let mut count: u128 = 0;
         log::info!("Starting timer...");
         loop {
-            log::info!("Sending ping: {}", count);
+            log::debug!("Sending ping: {}", count);
             timer_tx
                 .send(count)
                 .unwrap_or_else(|err| panic!("Failed to send message count: {} {:?}", count, err));
@@ -35,18 +38,28 @@ async fn main() {
     while let Ok((stream, addr)) = server.accept().await {
         let mut rx = tx.clone().subscribe();
         tokio::spawn(async move {
-            let websocket = tokio_tungstenite::accept_async(stream)
+            let mut websocket = tokio_tungstenite::accept_async(stream)
                 .await
                 .unwrap_or_else(|err| panic!("Failled to accept websocket: {:?}", err));
-            let (mut outgoing, mut incoming) = websocket.split();
-
+            log::info!("Started connection {:?}", addr);
             loop {
                 tokio::select! {
-                    Some(Ok(msg)) = incoming.next() => {
+                    Some(Ok(msg)) = websocket.next() => {
+                        if let Ok(txt) = msg.to_text() {
+                            if txt.is_empty() {
+                                websocket.close(Some(CloseFrame {
+                                    code: CloseCode::Normal,
+                                    reason: "Client initiated disconnect".into()
+                                }))
+                                .await
+                                .unwrap_or_else(|err| log::info!("Disconnected {:?} {:?}", addr, err));
+                                break;
+                            }
+                        }
                         log::info!("Received msg {} from {:?}", msg, addr);
                     },
                     Ok(ping) = rx.recv() => {
-                        outgoing
+                        websocket
                             .send(tungstenite::Message::Text(format!("Ping: {}", ping)))
                             .await
                             .unwrap_or_else(|err| log::warn!("Failed to send message: {:?}", err));
