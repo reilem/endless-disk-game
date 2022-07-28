@@ -15,9 +15,9 @@ cfg_if::cfg_if! {
             Ok(())
         }
     } else {
-        pub async fn start() -> Result<(), String> {
+        pub fn start() -> Result<(), String> {
             log::info!("Starting desktop client...");
-            client_desktop::run().await;
+            client_desktop::run();
             Ok(())
         }
     }

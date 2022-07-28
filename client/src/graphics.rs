@@ -1,6 +1,5 @@
 use instant::{Duration, Instant};
 use std::collections::HashSet;
-use tokio::time::sleep;
 use wgpu::{
     include_wgsl, util::DeviceExt, Device, PipelineLayoutDescriptor, Queue,
     RenderPipelineDescriptor, SurfaceConfiguration, TextureFormat,
@@ -96,16 +95,6 @@ fn next_update(wait_time: u32) -> Instant {
 }
 
 pub async fn run_loop(event_loop: EventLoop<()>, window: Window) {
-    tokio::spawn(async move {
-        loop {
-            tokio::select! {
-                _ = sleep(Duration::from_millis(500)) => {
-                    log::info!("Looping!");
-                }
-            }
-        }
-    });
-
     let mut state = GraphicState::new(&window).await;
 
     let mut last_update = Instant::now();
