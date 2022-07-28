@@ -3,7 +3,7 @@ use winit::{event_loop::EventLoop, window::WindowBuilder};
 
 use super::graphics;
 
-pub fn run() {
+pub async fn run() {
     // Start logger, uses env variable MY_LOG_LEVEL to determine log level
     // E.g. export RUST_LOG=debug
     #[cfg(feature = "env_logger")]
@@ -13,5 +13,5 @@ pub fn run() {
     let event_loop = EventLoop::new();
     // Note: windows launched on mac os from full-screen IDE / terminals will result in a window that is not movable: https://github.com/rust-windowing/winit/issues/1950
     let window = WindowBuilder::new().build(&event_loop).unwrap();
-    pollster::block_on(graphics::run_loop(event_loop, window));
+    graphics::run_loop(event_loop, window).await;
 }

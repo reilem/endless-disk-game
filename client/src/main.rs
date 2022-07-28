@@ -1,3 +1,4 @@
-pub fn main() {
-    endless_game::start().expect("Error occurred");
+#[tokio::main]
+pub async fn main() {
+    endless_game::start().await.expect("Error occurred");
 }
