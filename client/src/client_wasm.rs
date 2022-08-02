@@ -78,6 +78,10 @@ pub fn run() {
     init_logs();
 
     let (window, event_loop) = start_web_window();
-    // wasm_bindgen_futures::spawn_local(test_game_loop());
+    wasm_bindgen_futures::spawn_local(async move {
+        // TODO: This starts a thread in parallel but it we can't loop yet
+        // Give this a go: https://rustwasm.github.io/wasm-bindgen/examples/closures.html
+        log::warn!("Looping");
+    });
     wasm_bindgen_futures::spawn_local(graphics::run_loop(event_loop, window));
 }

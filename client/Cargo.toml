@@ -29,6 +29,8 @@ bytemuck = { version = "1.10", features = [ "derive" ] }
 image = { version = "0.24.2", default-features = false, features = ["png"] }
 # A replacement for std::time::Instant that works on WASM
 instant = "0.1.12"
+# Async version of std library
+async-std = "1.12.0"
 
 ## Non-WASM dependencies
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

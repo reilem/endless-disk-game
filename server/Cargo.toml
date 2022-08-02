@@ -9,3 +9,13 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+# Logger that can be configured from environment variables
+env_logger = "0.9"
+# Logging library interface
+log = "0.4"
+# Asynchronous I/O and multithreading scheduler
+tokio = { version = "1.20.1", features = ["full"] }
+# Web sockets
+tokio-tungstenite = "0.17.2"
+# Future utilities
+futures-util = { version = "0.3", features = ["sink", "std"] }
