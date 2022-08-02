@@ -1,3 +1,6 @@
+use bevy::prelude::*;
+
 pub fn main() {
-    endless_game::start().expect("Error occurred");
+    bevy::log::info!("Hello");
+    App::new().add_plugins(DefaultPlugins).run();
 }

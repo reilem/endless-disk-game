@@ -10,55 +10,17 @@ edition = "2021"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
 [profile.release]
 lto = true
-
-[features]
-default = ["wee_alloc", "console_log", "console_error_panic_hook", "env_logger"]
 
 [dependencies]
 # Logging library interface
 log = "0.4"
-# Window library
-winit = "0.26"
-# Allows top-level compiler flag code block execution
-cfg-if = "1.0.0"
-# Easy conversion of bytes
-bytemuck = { version = "1.10", features = [ "derive" ] }
-# Image loader
-image = { version = "0.24.2", default-features = false, features = ["png"] }
-# A replacement for std::time::Instant that works on WASM
-instant = "0.1.12"
-# Async version of std library
-async-std = "1.12.0"
-
-## Non-WASM dependencies
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-# Logger that can be configured from environment variables
-env_logger = { version = "0.9", optional = true }
-# Graphics library
-wgpu = "0.13"
-# Allows async thread blocking required for game loop
-pollster = "0.2"
-
-## WASM dependencies
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-# Bindings for JS & rust
-wasm-bindgen = "0.2.81"
-wasm-bindgen-futures = "0.4.31"
-# Allocator (produces smaller wasm outputs)
-wee_alloc = { version = "0.4.2", optional = true }
-# Throws panics into a console.error
-console_error_panic_hook = { version = "0.1.5", optional = true }
-# Wgpu specific for web
-wgpu = { version = "0.13", features = ["webgl"]}
-# Web-sys provides an interface to interact with browser API
-web-sys = { version = "0.3.22", features = ["Document", "Window", "Element"] }
-# Provides convenient console.log bindings (better than just using web-sys)
-console_log = { version = "0.2.0", optional = true }
-
-# These crates are used for running unit tests.
-[dev-dependencies]
-wasm-bindgen-test = "0.2.45"
-futures = "0.1.27"
-js-sys = "0.3.22"
+# Game engine
+bevy = { version = "0.8", default-features = false, features = [ "bevy_asset", "bevy_winit", "render" ] }
