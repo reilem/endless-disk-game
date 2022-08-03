@@ -10,6 +10,8 @@ This crate holds the client code for a WIP rust game. Everything is very experim
 
 ## Running
 
+Quick: Cmd + Shift + B shows overview of tasks
+
 ### WASM
 
 **Development mode:** Builds the project and opens it in a new browser tab. Auto-reloads when the project changes.

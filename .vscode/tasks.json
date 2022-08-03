@@ -1,0 +1,23 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "run desktop",
+            "type": "shell",
+            "command": "cd client && cargo run",
+            "group": {
+                "kind":"build",
+                "isDefault": false
+            }
+        },
+        {
+            "label": "serve web",
+            "type": "shell",
+            "command": "cd client && trunk serve",
+            "group": {
+                "kind":"build",
+                "isDefault": false
+            }
+        }
+    ]
+}
