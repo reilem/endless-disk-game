@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy_inspector_egui::Inspectable;
 
-use crate::{texture::TextureSheet, SCALE, TILE_SIZE};
+use crate::{sprite, texture::TextureSheet, TILE_SIZE};
 
 #[derive(Component, Inspectable)]
 pub struct Player {
@@ -40,20 +40,11 @@ fn player_movement(
     }
 }
 
-fn spawn_player(mut commands: Commands, textures: Res<TextureSheet>) {
-    let sprite = TextureAtlasSprite::new(2);
-
+fn spawn_player(mut commands: Commands, texture_sheet: Res<TextureSheet>) {
+    let player_sprite =
+        sprite::spawn_sprite(&mut commands, &texture_sheet, 2, Vec3::new(0.0, 0.0, 900.0));
     commands
-        .spawn_bundle(SpriteSheetBundle {
-            sprite,
-            texture_atlas: textures.atlas_handle.clone(),
-            transform: Transform {
-                translation: Vec3::new(0.0, 0.0, 900.0),
-                scale: Vec3::splat(SCALE),
-                ..Default::default()
-            },
-            ..Default::default()
-        })
+        .entity(player_sprite)
         .insert(Name::new("Player"))
         .insert(Player { speed: 0.9 });
 }

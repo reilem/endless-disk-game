@@ -1,5 +1,6 @@
 pub mod debug;
 pub mod player;
+pub mod sprite;
 pub mod texture;
 
 pub const TILE_SIZE: f32 = 96.0;
