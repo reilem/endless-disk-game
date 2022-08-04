@@ -6,7 +6,7 @@ use bevy::{
     },
     window::{PresentMode, WindowMode},
 };
-use endless_game::{player::PlayerPlugin, TextureSheet};
+use endless_game::{debug::DebugPlugin, player::PlayerPlugin, TextureSheet, TEXTURE_SIZE};
 
 const BACKGROUND: Color = Color::rgb(0.2, 0.2, 0.2);
 
@@ -20,6 +20,7 @@ pub fn main() {
         .add_system(set_texture_filters_to_nearest)
         .add_plugin(PlayerPlugin)
         .add_plugins(DefaultPlugins)
+        .add_plugin(DebugPlugin)
         .run();
 }
 
@@ -52,7 +53,7 @@ fn init_textures(
     mut texture_atlasses: ResMut<Assets<TextureAtlas>>,
 ) {
     let image: Handle<Image> = assets.load("atlas-1.png"); // TODO: Pad the tiles if there is bleeding
-    let atlas = TextureAtlas::from_grid(image, Vec2::splat(32.0), 3, 1);
+    let atlas = TextureAtlas::from_grid(image, Vec2::splat(TEXTURE_SIZE), 3, 1);
     let atlas_handle = texture_atlasses.add(atlas);
     commands.insert_resource(TextureSheet { atlas_handle });
 }
@@ -64,8 +65,6 @@ fn set_texture_filters_to_nearest(
     for event in texture_events.iter() {
         if let AssetEvent::Created { handle } = event {
             if let Some(mut texture) = textures.get_mut(handle) {
-                println!("Change texture filter!");
-
                 texture.sampler_descriptor = ImageSampler::Descriptor(SamplerDescriptor {
                     min_filter: FilterMode::Nearest,
                     mag_filter: FilterMode::Nearest,
