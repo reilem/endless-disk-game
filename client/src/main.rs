@@ -1,11 +1,12 @@
 use bevy::{
     prelude::*,
+    render::{
+        render_resource::{FilterMode, SamplerDescriptor},
+        texture::ImageSampler,
+    },
     window::{PresentMode, WindowMode},
 };
-
-struct TextureSheet {
-    atlas_handle: Handle<TextureAtlas>,
-}
+use endless_game::{player::PlayerPlugin, TextureSheet};
 
 const BACKGROUND: Color = Color::rgb(0.2, 0.2, 0.2);
 
@@ -16,7 +17,8 @@ pub fn main() {
         .insert_resource(init_window())
         .add_startup_system_to_stage(StartupStage::PreStartup, init_textures)
         .add_startup_system(init_camera)
-        .add_startup_system(spawn_player)
+        .add_system(set_texture_filters_to_nearest)
+        .add_plugin(PlayerPlugin)
         .add_plugins(DefaultPlugins)
         .run();
 }
@@ -55,18 +57,22 @@ fn init_textures(
     commands.insert_resource(TextureSheet { atlas_handle });
 }
 
-fn spawn_player(mut commands: Commands, textures: Res<TextureSheet>) {
-    let mut sprite = TextureAtlasSprite::new(2);
-    sprite.custom_size = Some(Vec2 { x: 64.0, y: 64.0 });
-    commands
-        .spawn_bundle(SpriteSheetBundle {
-            sprite,
-            texture_atlas: textures.atlas_handle.clone(),
-            transform: Transform {
-                translation: Vec3::new(0.0, 0.0, 900.0),
-                ..Default::default()
-            },
-            ..Default::default()
-        })
-        .insert(Name::new("Player"));
+fn set_texture_filters_to_nearest(
+    mut texture_events: EventReader<AssetEvent<Image>>,
+    mut textures: ResMut<Assets<Image>>,
+) {
+    for event in texture_events.iter() {
+        if let AssetEvent::Created { handle } = event {
+            if let Some(mut texture) = textures.get_mut(handle) {
+                println!("Change texture filter!");
+
+                texture.sampler_descriptor = ImageSampler::Descriptor(SamplerDescriptor {
+                    min_filter: FilterMode::Nearest,
+                    mag_filter: FilterMode::Nearest,
+                    mipmap_filter: FilterMode::Nearest,
+                    ..default()
+                })
+            }
+        }
+    }
 }
