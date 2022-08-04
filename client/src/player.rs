@@ -1,6 +1,7 @@
 use bevy::prelude::*;
+use bevy_inspector_egui::Inspectable;
 
-use crate::{TextureSheet, SCALE, TILE_SIZE};
+use crate::{texture::TextureSheet, SCALE, TILE_SIZE};
 
 #[derive(Component, Inspectable)]
 pub struct Player {
