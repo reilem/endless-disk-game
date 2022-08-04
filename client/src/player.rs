@@ -2,7 +2,7 @@ use bevy::prelude::*;
 
 use crate::{TextureSheet, SCALE, TILE_SIZE};
 
-#[derive(Component)]
+#[derive(Component, Inspectable)]
 pub struct Player {
     speed: f32,
 }

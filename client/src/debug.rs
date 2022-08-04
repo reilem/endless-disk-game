@@ -1,4 +1,7 @@
 use bevy::prelude::*;
+use bevy_inspector_egui::RegisterInspectable;
+
+use crate::player::Player;
 
 pub struct DebugPlugin;
 
@@ -7,7 +10,8 @@ impl Plugin for DebugPlugin {
         #[cfg(feature = "bevy-inspector-egui")]
         {
             use bevy_inspector_egui::WorldInspectorPlugin;
-            _app.add_plugin(WorldInspectorPlugin::new());
+            _app.add_plugin(WorldInspectorPlugin::new())
+                .register_inspectable::<Player>();
         }
     }
 }
