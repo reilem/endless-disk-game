@@ -14,6 +14,8 @@ const WIDTH: f32 = 20.0;
 const HEIGHT: f32 = 15.0;
 
 fn create_tile_background(mut commands: Commands, texture_sheet: Res<TextureSheet>) {
+    // TODO: Make tile background dynamic based on screen size
+    // TODO: Add all tiles into one background entity
     let translation_x = TILE_SIZE * (WIDTH / 2.0).floor();
     let translation_y = TILE_SIZE * (HEIGHT / 2.0).floor();
     for y in 0..(HEIGHT as u32) {

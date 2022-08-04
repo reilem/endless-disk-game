@@ -22,6 +22,7 @@ fn player_movement(
     keyboard: Res<Input<KeyCode>>,
     time: Res<Time>,
 ) {
+    // TODO: Track player with camera
     let (player, mut transform) = player_query
         .get_single_mut()
         .unwrap_or_else(|err| panic!("Failed to get player {:?}", err));
