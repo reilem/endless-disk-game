@@ -2,7 +2,9 @@ use bevy::{
     prelude::*,
     window::{PresentMode, WindowMode},
 };
-use endless_game::{debug::DebugPlugin, player::PlayerPlugin, texture::TexturePlugin};
+use endless_game::{
+    debug::DebugPlugin, player::PlayerPlugin, texture::TexturePlugin, world::WorldPlugin,
+};
 
 const BACKGROUND: Color = Color::rgb(0.2, 0.2, 0.2);
 
@@ -13,6 +15,7 @@ pub fn main() {
         .insert_resource(init_window())
         .add_startup_system(init_camera)
         .add_plugin(TexturePlugin)
+        .add_plugin(WorldPlugin)
         .add_plugin(PlayerPlugin)
         .add_plugins(DefaultPlugins)
         .add_plugin(DebugPlugin)
@@ -23,7 +26,6 @@ fn init_window() -> WindowDescriptor {
     WindowDescriptor {
         width: 1024.0,
         height: 768.0,
-        position: WindowPosition::Centered(MonitorSelection::Primary),
         title: "Endless".to_string(),
         present_mode: PresentMode::AutoVsync,
         resizable: true,
@@ -34,7 +36,7 @@ fn init_window() -> WindowDescriptor {
         transparent: false,
         canvas: None,
         fit_canvas_to_parent: true,
-        ..Default::default()
+        ..default()
     }
 }
 

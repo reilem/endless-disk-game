@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy_inspector_egui::Inspectable;
 
-use crate::{sprite, texture::TextureSheet, TILE_SIZE};
+use crate::{sprite::spawn_sprite, texture::TextureSheet, TILE_SIZE};
 
 #[derive(Component, Inspectable)]
 pub struct Player {
@@ -41,10 +41,9 @@ fn player_movement(
 }
 
 fn spawn_player(mut commands: Commands, texture_sheet: Res<TextureSheet>) {
-    let player_sprite =
-        sprite::spawn_sprite(&mut commands, &texture_sheet, 2, Vec3::new(0.0, 0.0, 900.0));
+    let player_sprite = spawn_sprite(&mut commands, &texture_sheet, 2, Vec3::new(0.0, 0.0, 900.0));
     commands
         .entity(player_sprite)
         .insert(Name::new("Player"))
-        .insert(Player { speed: 0.9 });
+        .insert(Player { speed: 1.5 });
 }
