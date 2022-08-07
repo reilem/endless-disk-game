@@ -42,7 +42,6 @@ fn player_movement(
     keyboard: Res<Input<KeyCode>>,
     time: Res<Time>,
 ) {
-    // TODO: Track player with camera
     let (player, mut transform) = player_query
         .get_single_mut()
         .unwrap_or_else(|err| panic!("Failed to get player {:?}", err));
@@ -72,10 +71,11 @@ fn player_movement(
 }
 
 fn will_collide(position: Vec3, size: Vec2, wall_query: &WallQuery) -> bool {
+    // TODO: Ensure collisions bring you as close to collider as possible
     for (wall_transform, _) in wall_query.iter() {
         if collide(
             position,
-            size, // TODO: Improve hit boxes of the collision
+            size, // TODO: Improve hit boxes of the collision (just hardcode for now)
             wall_transform.translation,
             Vec2::splat(TILE_SIZE),
         )

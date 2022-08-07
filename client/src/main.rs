@@ -10,6 +10,7 @@ const BACKGROUND: Color = Color::rgb(0.2, 0.2, 0.2);
 
 pub fn main() {
     bevy::log::info!("Hello");
+    // TODO: Add multiplayer
     App::new()
         .insert_resource(ClearColor(BACKGROUND))
         .insert_resource(init_window())

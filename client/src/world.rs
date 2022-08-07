@@ -18,6 +18,7 @@ fn create_tile_background(
     texture_sheet: Res<TextureSheet>,
     window: Res<WindowDescriptor>,
 ) {
+    // TODO: spawn more tiles / move existing tiles when player is moving
     let window_size = Size {
         width: window.width as u32,
         height: window.height as u32,
