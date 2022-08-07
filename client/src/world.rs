@@ -4,6 +4,9 @@ use crate::{sprite::*, texture::TextureSheet, TILE_SIZE};
 
 pub struct WorldPlugin;
 
+#[derive(Component)]
+pub struct TileCollider;
+
 impl Plugin for WorldPlugin {
     fn build(&self, app: &mut App) {
         app.add_startup_system(create_tile_background);
@@ -37,19 +40,49 @@ fn create_tile_background(
         }
     }
 
-    spawn_bundle(
+    tiles.push(add_fire(
         &mut commands,
         &texture_sheet,
-        create_sprite_with_size(SpriteInfo {
-            index: 0,
-            size: 0.0,
+        IVec2 { x: 2, y: 4 },
+    ));
+    tiles.push(add_fire(
+        &mut commands,
+        &texture_sheet,
+        IVec2 { x: -3, y: -2 },
+    ));
+    tiles.push(add_fire(
+        &mut commands,
+        &texture_sheet,
+        IVec2 { x: 4, y: -1 },
+    ));
+
+    commands
+        .spawn()
+        .insert(Name::new("Map"))
+        .insert(ComputedVisibility::default())
+        .insert(Visibility::default())
+        .insert(Transform::default())
+        .insert(GlobalTransform::default())
+        .push_children(&tiles);
+}
+
+fn add_fire(
+    commands: &mut Commands,
+    texture_sheet: &TextureSheet,
+    index_position: IVec2,
+) -> Entity {
+    let fire = spawn_sprite(
+        commands,
+        texture_sheet,
+        1,
+        tile_location_3(IVec3 {
+            x: index_position.x,
+            y: index_position.y,
+            z: 10,
         }),
-        tile_location(IVec2 { x: 0, y: 0 }),
-    )
-    .insert(Name::new("Map"))
-    .insert(Transform::default())
-    .insert(GlobalTransform::default())
-    .push_children(&tiles);
+    );
+    commands.entity(fire).insert(TileCollider);
+    fire
 }
 
 /**
@@ -57,10 +90,22 @@ fn create_tile_background(
  * Does this by simply multiplying the given tile index position by tile size.
  */
 fn tile_location(index_position: IVec2) -> Vec3 {
+    tile_location_3(IVec3 {
+        x: index_position.x,
+        y: index_position.y,
+        z: 0,
+    })
+}
+
+/**
+ * Calculates the tile location transformation required to put the tile in the correct position in the world.
+ * Does this by simply multiplying the given tile index position by tile size.
+ */
+fn tile_location_3(index_position: IVec3) -> Vec3 {
     Vec3 {
         x: (index_position.x as f32) * TILE_SIZE,
         y: (index_position.y as f32) * TILE_SIZE,
-        z: 0.0,
+        z: index_position.z as f32,
     }
 }
 

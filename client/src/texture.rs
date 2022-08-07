@@ -26,7 +26,7 @@ fn init_textures(
     assets: Res<AssetServer>,
     mut texture_atlasses: ResMut<Assets<TextureAtlas>>,
 ) {
-    let image: Handle<Image> = assets.load("atlas-1.png"); // TODO: Pad the tiles if there is bleeding
+    let image: Handle<Image> = assets.load("atlas-1.png"); // NOTE: Pad the tiles if there is bleeding
     let atlas = TextureAtlas::from_grid(image, Vec2::splat(TEXTURE_SIZE), 3, 1);
     let atlas_handle = texture_atlasses.add(atlas);
     commands.insert_resource(TextureSheet { atlas_handle });
