@@ -3,8 +3,12 @@ use bevy::prelude::*;
 use crate::{texture::TextureSheet, TILE_SIZE};
 
 pub fn create_sprite(index: usize) -> TextureAtlasSprite {
+    create_sprite_with_size(index, TILE_SIZE)
+}
+
+pub fn create_sprite_with_size(index: usize, size: f32) -> TextureAtlasSprite {
     let mut sprite = TextureAtlasSprite::new(index);
-    sprite.custom_size = Some(Vec2::splat(TILE_SIZE));
+    sprite.custom_size = Some(Vec2::splat(size));
     sprite
 }
 
