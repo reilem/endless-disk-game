@@ -2,7 +2,7 @@ use bevy::{prelude::*, sprite::collide_aabb::collide};
 use bevy_inspector_egui::Inspectable;
 
 use crate::{
-    sprite::spawn_sprite,
+    sprite::{spawn_sprite, sprite_size},
     texture::TextureSheet,
     world::{update_tile_background, TileCollider, TileMap, WorldTile},
     TILE_SIZE,
@@ -69,26 +69,25 @@ fn player_movement(
     }
     if x != 0.0 || y != 0.0 {
         let next_x_position = transform.translation + Vec3 { x, y: 0.0, z: 0.0 };
-        if !will_collide(next_x_position, Vec2::splat(TILE_SIZE), &wall_query) {
+        if !will_collide(next_x_position, &wall_query) {
             transform.translation.x = next_x_position.x;
             player.just_moved = true;
         }
         let next_y_position = transform.translation + Vec3 { x: 0.0, y, z: 0.0 };
-        if !will_collide(next_y_position, Vec2::splat(TILE_SIZE), &wall_query) {
+        if !will_collide(next_y_position, &wall_query) {
             transform.translation.y = next_y_position.y;
             player.just_moved = true;
         }
     }
 }
 
-fn will_collide(position: Vec3, size: Vec2, wall_query: &WallQuery) -> bool {
-    // TODO: Ensure collisions bring you as close to collider as possible
+fn will_collide(position: Vec3, wall_query: &WallQuery) -> bool {
     for (wall_transform, _) in wall_query.iter() {
         if collide(
             position,
-            size, // TODO: Improve hit boxes of the collision (just hardcode for now)
+            sprite_size(2),
             wall_transform.translation,
-            Vec2::splat(TILE_SIZE),
+            sprite_size(1),
         )
         .is_some()
         {

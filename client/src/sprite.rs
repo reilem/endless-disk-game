@@ -61,3 +61,24 @@ pub fn spawn_sprite_with_size(
     )
     .id()
 }
+
+pub fn sprite_size(index: u32) -> Vec2 {
+    if index == 0 {
+        Vec2 {
+            x: TILE_SIZE,
+            y: TILE_SIZE,
+        }
+    } else if index == 1 {
+        Vec2 {
+            x: TILE_SIZE * 0.53125,
+            y: TILE_SIZE * 0.53125,
+        }
+    } else if index == 2 {
+        Vec2 {
+            x: TILE_SIZE * 0.6,
+            y: TILE_SIZE * 0.84375,
+        }
+    } else {
+        Vec2::splat(0.0)
+    }
+}
