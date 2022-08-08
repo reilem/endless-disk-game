@@ -1,11 +1,17 @@
 use bevy::{prelude::*, sprite::collide_aabb::collide};
 use bevy_inspector_egui::Inspectable;
 
-use crate::{sprite::spawn_sprite, texture::TextureSheet, world::TileCollider, TILE_SIZE};
+use crate::{
+    sprite::spawn_sprite,
+    texture::TextureSheet,
+    world::{update_tile_background, TileCollider, TileMap, WorldTile},
+    TILE_SIZE,
+};
 
 #[derive(Component, Inspectable)]
 pub struct Player {
     speed: f32,
+    just_moved: bool,
 }
 
 pub struct PlayerPlugin;
@@ -13,8 +19,9 @@ pub struct PlayerPlugin;
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app.add_startup_system(spawn_player);
-        app.add_system(player_movement.label("movement"));
-        app.add_system(camera_movement.after("movement"));
+        app.add_system(player_movement);
+        app.add_system(camera_movement.after(player_movement));
+        app.add_system(movement_side_effects.after(camera_movement));
     }
 }
 
@@ -37,12 +44,12 @@ fn camera_movement(
 }
 
 fn player_movement(
-    mut player_query: Query<(&Player, &mut Transform)>,
+    mut player_query: Query<(&mut Player, &mut Transform)>,
     wall_query: WallQuery, // Cannot request same entity from two queries, so we must exclude player component
     keyboard: Res<Input<KeyCode>>,
     time: Res<Time>,
 ) {
-    let (player, mut transform) = player_query
+    let (mut player, mut transform) = player_query
         .get_single_mut()
         .unwrap_or_else(|err| panic!("Failed to get player {:?}", err));
 
@@ -60,13 +67,17 @@ fn player_movement(
     if keyboard.any_pressed([KeyCode::D, KeyCode::Right]) {
         x = player.speed * TILE_SIZE * time.delta_seconds();
     }
-    let next_x_position = transform.translation + Vec3 { x, y: 0.0, z: 0.0 };
-    if !will_collide(next_x_position, Vec2::splat(TILE_SIZE), &wall_query) {
-        transform.translation.x = next_x_position.x;
-    }
-    let next_y_position = transform.translation + Vec3 { x: 0.0, y, z: 0.0 };
-    if !will_collide(next_y_position, Vec2::splat(TILE_SIZE), &wall_query) {
-        transform.translation.y = next_y_position.y;
+    if x != 0.0 || y != 0.0 {
+        let next_x_position = transform.translation + Vec3 { x, y: 0.0, z: 0.0 };
+        if !will_collide(next_x_position, Vec2::splat(TILE_SIZE), &wall_query) {
+            transform.translation.x = next_x_position.x;
+            player.just_moved = true;
+        }
+        let next_y_position = transform.translation + Vec3 { x: 0.0, y, z: 0.0 };
+        if !will_collide(next_y_position, Vec2::splat(TILE_SIZE), &wall_query) {
+            transform.translation.y = next_y_position.y;
+            player.just_moved = true;
+        }
     }
 }
 
@@ -92,5 +103,23 @@ fn spawn_player(mut commands: Commands, texture_sheet: Res<TextureSheet>) {
     commands
         .entity(player_sprite)
         .insert(Name::new("Player"))
-        .insert(Player { speed: 1.5 });
+        .insert(Player {
+            speed: 1.5,
+            just_moved: false,
+        });
+}
+
+fn movement_side_effects(
+    mut player_query: Query<&mut Player>,
+    camera_query: Query<&Transform, With<Camera>>,
+    map_query: Query<&TileMap>,
+    tile_query: Query<&mut Transform, (With<WorldTile>, Without<Camera>)>,
+) {
+    let mut player = player_query
+        .get_single_mut()
+        .unwrap_or_else(|err| panic!("Failed to get player {:?}", err));
+    if player.just_moved {
+        update_tile_background(camera_query, map_query, tile_query);
+        player.just_moved = false;
+    }
 }
