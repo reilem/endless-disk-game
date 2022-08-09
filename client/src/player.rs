@@ -54,25 +54,29 @@ fn keyboard_movement(
     keyboard: Res<Input<KeyCode>>,
     time: Res<Time>,
 ) {
-    let ds = time.delta_seconds();
     let (mut player, mut transform) = player_query
         .get_single_mut()
         .unwrap_or_else(|err| panic!("Failed to get player {:?}", err));
-    // TODO: Ensure diagonal movement speed is same as horizontal/vertical
-    let mut y = 0.0;
+    let mut movement_vector = Vec2 { x: 0.0, y: 0.0 };
     if keyboard.any_pressed([KeyCode::W, KeyCode::Up]) {
-        y = displacement(player.speed, ds);
+        movement_vector.y = 1.0;
     }
     if keyboard.any_pressed([KeyCode::S, KeyCode::Down]) {
-        y = -1.0 * displacement(player.speed, ds);
+        movement_vector.y = -1.0;
     }
-    let mut x = 0.0;
     if keyboard.any_pressed([KeyCode::A, KeyCode::Left]) {
-        x = -1.0 * displacement(player.speed, ds);
+        movement_vector.x = -1.0;
     }
     if keyboard.any_pressed([KeyCode::D, KeyCode::Right]) {
-        x = displacement(player.speed, ds);
+        movement_vector.x = 1.0;
     }
+    if movement_vector == (Vec2 { x: 0.0, y: 0.0 }) {
+        return;
+    }
+    let Vec2 { x, y } = calculate_delta_movement(
+        movement_vector,
+        displacement(player.speed, time.delta_seconds()),
+    );
     move_player(x, y, &mut player, &mut transform, wall_query);
 }
 
@@ -86,45 +90,20 @@ fn mouse_movement(
     if !buttons.pressed(MouseButton::Left) {
         return;
     }
-
-    let (mut player, mut transform) = player_query
-        .get_single_mut()
-        .unwrap_or_else(|err| panic!("Failed to get player {:?}", err));
-
     let window = windows.get_primary().unwrap();
-    let width = window.width();
-    let height = window.height();
-    let mid_x = width / 2.0;
-    let mid_y = height / 2.0;
 
     if let Some(position) = window.cursor_position() {
-        let delta_space = displacement(player.speed, time.delta_seconds());
-        // Project the coordinates into normal space
-        // Old space: bottom-left: (0,0), top-right: (width, height)
-        // Normal space: bottom-left (-1,-1), top-right: (1,1)
-        let normal_position = Vec2 {
-            x: (position.x - mid_x) / mid_x,
-            y: (position.y - mid_y) / mid_y,
-        };
-        // Cursor deadzone is at -0.25 to 0.25
-        // If the cursor is in this deadzone the sprite will move slower the closer the cursor is
-        // and faster the further away the cursor is. Beyond the deadzone the sprite will move at max speed.
-        let deadzone_percentage = 0.25;
-        // Weights will either be 1 or -1 when mouse is beyond deadzone, or between 0 and 1(or -1) when within deadzone
-        // Closer to player = smaller weight
-        let weight_x = (normal_position.x / deadzone_percentage).min(1.0).max(-1.0);
-        let weight_y = (normal_position.y / deadzone_percentage).min(1.0).max(-1.0);
-        // Calculate the strength of the x and y movement
-        // Diagonal: both = 0.5. Horizontal: strength_x = 1. Vertical: strength_y = 1
-        let alpha = normal_position.y / normal_position.x;
-        let strength_x = 1.0 / (1.0 + alpha.abs());
-        let strength_y = 1.0 - strength_x;
-        // Multiply the weights by the strengths to find the true x and y movement components
-        let x_component = strength_x * weight_x;
-        let y_component = strength_y * weight_y;
-        // Multiple the vector components by the maximum displacement to find the x and y displacement
-        let x = x_component * delta_space;
-        let y = y_component * delta_space;
+        let (mut player, mut transform) = player_query
+            .get_single_mut()
+            .unwrap_or_else(|err| panic!("Failed to get player {:?}", err));
+
+        let width = window.width();
+        let height = window.height();
+
+        let Vec2 { x, y } = calculate_delta_movement(
+            normalise_vector(position, Size { width, height }),
+            displacement(player.speed, time.delta_seconds()),
+        );
         move_player(x, y, &mut player, &mut transform, wall_query);
     }
 }
@@ -195,4 +174,47 @@ fn movement_side_effects(
         update_tile_background(camera_query, map_query, tile_query);
         player.just_moved = false;
     }
+}
+
+/// Project the coordinates into normal space
+/// Old space: bottom-left: (0,0), top-right: (width, height)
+/// Normal space: bottom-left (-1,-1), top-right: (1,1)
+fn normalise_vector(vector: Vec2, size: Size<f32>) -> Vec2 {
+    let mid_x = size.width / 2.0;
+    let mid_y = size.height / 2.0;
+    Vec2 {
+        x: (vector.x - mid_x) / mid_x,
+        y: (vector.y - mid_y) / mid_y,
+    }
+}
+
+/// This function fixes the issue where diagonal movement speed is greater than horizontal/vertical.
+/// Takes:
+/// - Normalised movement vector (each value between -1.0 and 1.0) Represents desired x and y movement
+/// - Max delta space, the maximum combined amount of displacement that can take place with this movement
+///
+/// Returns: an x and y component used to translate the player. Sum of x and y will not exceed max delta space
+fn calculate_delta_movement(movement_vector: Vec2, max_delta_space: f32) -> Vec2 {
+    assert!(movement_vector.x.abs() <= 1.0);
+    assert!(movement_vector.y.abs() <= 1.0);
+    // Cursor deadzone is at -0.25 to 0.25
+    // If the cursor is in this deadzone the sprite will move slower the closer the cursor is
+    // and faster the further away the cursor is. Beyond the deadzone the sprite will move at max speed.
+    let deadzone_percentage = 0.25;
+    // Weights will either be 1 or -1 when mouse is beyond deadzone, or between 0 and 1(or -1) when within deadzone
+    // Closer to player = smaller weight
+    let weight_x = (movement_vector.x / deadzone_percentage).min(1.0).max(-1.0);
+    let weight_y = (movement_vector.y / deadzone_percentage).min(1.0).max(-1.0);
+    // Calculate the strength of the x and y movement
+    // Diagonal: both = 0.5. Horizontal: strength_x = 1. Vertical: strength_y = 1
+    let alpha = movement_vector.y / movement_vector.x;
+    let strength_x = 1.0 / (1.0 + alpha.abs());
+    let strength_y = 1.0 - strength_x;
+    // Multiply the weights by the strengths to find the true x and y movement components
+    let x_component = strength_x * weight_x;
+    let y_component = strength_y * weight_y;
+    // Multiple the vector components by the maximum displacement to find the x and y displacement
+    let x = x_component * max_delta_space;
+    let y = y_component * max_delta_space;
+    Vec2 { x, y }
 }
