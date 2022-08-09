@@ -1423,7 +1423,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "endless_game"
+name = "endless_disk"
 version = "0.1.0"
 dependencies = [
  "bevy",

@@ -1,5 +1,5 @@
 [package]
-name = "endless_game"
+name = "endless_disk"
 description = "A prototype of a simple rust-based MMO"
 version = "0.1.0"
 authors = ["reilemx@gmail.com"]
@@ -8,6 +8,7 @@ readme = "README.md"
 edition = "2021"
 
 [lib]
+name = "endless_game"
 crate-type = ["cdylib", "rlib"]
 
 [features]
