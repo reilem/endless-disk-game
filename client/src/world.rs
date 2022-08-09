@@ -1,4 +1,4 @@
-use bevy::prelude::*;
+use bevy::{prelude::*, window::WindowResized};
 use bevy_inspector_egui::Inspectable;
 
 use crate::{sprite::*, texture::TextureSheet, TILE_SIZE};
@@ -25,22 +25,47 @@ pub struct TileMap {
 
 impl Plugin for WorldPlugin {
     fn build(&self, app: &mut App) {
-        app.add_startup_system(create_tile_background);
+        app.add_system(initialise_tile_background);
+    }
+}
+
+fn initialise_tile_background(
+    mut commands: Commands,
+    map_query: Query<Entity, With<TileMap>>,
+    texture_sheet: Res<TextureSheet>,
+    resize_event: Res<Events<WindowResized>>,
+) {
+    // TODO: Fix the background not updating with camera position after creation
+    // Tried: adding update system after this one. Problem: it doesn't receive new entity map
+    // Tried: passing camera offset to all tiles created. Problem: this re-centers the entire map
+    let mut reader = resize_event.get_reader();
+    let mut last_size: Option<Size> = None;
+    for e in reader.iter(&resize_event) {
+        println!("FOUND SIZE {} x {}", e.width, e.height);
+        last_size = Some(Size {
+            width: e.width,
+            height: e.height,
+        });
+    }
+
+    if let Some(window_size) = last_size {
+        if let Ok(tile_map) = map_query.get_single() {
+            println!("Tile map found, despawning");
+            commands.entity(tile_map).despawn_recursive();
+        }
+        println!("Creating new map with size: {:?}", window_size);
+        create_tile_background(commands, texture_sheet, window_size);
+        println!("Created new map");
     }
 }
 
 fn create_tile_background(
     mut commands: Commands,
     texture_sheet: Res<TextureSheet>,
-    window: Res<WindowDescriptor>,
+    window_size: Size<f32>,
 ) {
     // NOTE: Discussion on larger worlds and f32 vs f64 https://github.com/bevyengine/bevy/issues/1680
     //       We will likely need to have our own f64 coordinate system and for rendering simply use the screen bounds as coordinates
-    let window_size = Size {
-        width: window.width as u32,
-        height: window.height as u32,
-    };
-
     let x_square_count = number_of_squares_horizontally(&window_size);
     let y_square_count = number_of_squares_vertically(&window_size);
 
@@ -54,7 +79,10 @@ fn create_tile_background(
                 0,
                 tile_location(IVec2 { x, y }),
             );
-            commands.entity(tile).insert(WorldTile);
+            commands
+                .entity(tile)
+                .insert(WorldTile)
+                .insert(Name::new(format!("Tile_y{}x{}", y, x)));
             tiles.push(tile);
         }
     }
@@ -91,12 +119,16 @@ pub fn update_tile_background(
     map_query: Query<&TileMap>,
     mut tile_query: Query<&mut Transform, (With<WorldTile>, Without<Camera>)>,
 ) {
-    let tile_map = map_query
-        .get_single()
-        .unwrap_or_else(|err| panic!("Failed to get tile map in movement_side_effects: {:?}", err));
+    println!("UPDATE CHECK");
+    let tile_map = map_query.get_single().unwrap_or_else(|err| {
+        panic!(
+            "Failed to get tile map in update_tile_background: {:?}",
+            err
+        )
+    });
     let camera_transform = camera_query
         .get_single()
-        .unwrap_or_else(|err| panic!("Failed to get camera in movement_side_effects {:?}", err));
+        .unwrap_or_else(|err| panic!("Failed to get camera in update_tile_background {:?}", err));
     for mut tile_transform in tile_query.iter_mut() {
         let normalised_tile_vec = tile_transform.translation - camera_transform.translation;
         if normalised_tile_vec.x < tile_map.min_x {
@@ -176,8 +208,8 @@ fn next_highest_uneven_number(value: u32) -> u32 {
  * Returns the number of squares that will be needed to fill the window in squares
  * with size SQUARE_SIZE based on given parameter.
  */
-fn number_of_squares(parameter: u32) -> u32 {
-    let divided = (parameter as f32) / TILE_SIZE;
+fn number_of_squares(parameter: f32) -> u32 {
+    let divided = parameter / TILE_SIZE;
     let ceiled = divided.ceil();
     next_highest_uneven_number(ceiled as u32)
 }
@@ -185,14 +217,14 @@ fn number_of_squares(parameter: u32) -> u32 {
 /**
  * Returns the number of squares that will be needed to fill the window horizontally
  */
-fn number_of_squares_horizontally(size: &Size<u32>) -> u32 {
+fn number_of_squares_horizontally(size: &Size<f32>) -> u32 {
     number_of_squares(size.width)
 }
 
 /**
  * Returns the number of squares that will be needed to fill the window vertically
  */
-fn number_of_squares_vertically(size: &Size<u32>) -> u32 {
+fn number_of_squares_vertically(size: &Size<f32>) -> u32 {
     number_of_squares(size.height)
 }
 
