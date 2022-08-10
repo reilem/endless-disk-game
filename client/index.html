@@ -8,7 +8,38 @@
             background-color: #222;
             overflow: hidden;
         }
+        p {
+            font-family: 'Courier New', Courier, monospace;
+            color: #ccc;
+            font-size: 2rem;
+        }
+        .fullscreen {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
     </style>
     <link data-trunk rel="copy-dir" href="./assets" />
+    <script>
+        function doesCanvasExist() {
+            const canvas = window.document.getElementsByTagName('canvas')[0];
+            if (canvas) {
+                console.log('Found Canvas')
+                console.log(canvas)
+                const loading = window.document.getElementById('loading-screen');
+                window.document.body.removeChild(loading);
+            } else {
+                requestAnimationFrame(doesCanvasExist);
+            }
+        }
+        requestAnimationFrame(doesCanvasExist);
+    </script>
   </head>
+  <body>
+    <div id="loading-screen" class="fullscreen">
+        <p>Loading...</p>
+    </div>
+  </body>
 </html>
