@@ -9,7 +9,10 @@ use endless_game::{
 const BACKGROUND: Color = Color::rgb(0.2, 0.2, 0.2);
 
 pub fn main() {
-    bevy::log::info!("Hello");
+    #[cfg(target_arch = "wasm32")]
+    {
+        std::panic::set_hook(Box::new(console_error_panic_hook::hook));
+    }
     // TODO: Add multiplayer
     App::new()
         .insert_resource(ClearColor(BACKGROUND))
@@ -24,10 +27,8 @@ pub fn main() {
 }
 
 fn init_window() -> WindowDescriptor {
-    // TODO: Enable printing and panics in wasm
+    // TODO: Remove scrollbar in web
     WindowDescriptor {
-        width: 1024.0, // TODO: make full screen in wasm. Might help: (https://github.com/horup/some-tank-game-rs/blob/main/src/wasm/mod.rs)
-        height: 768.0,
         title: "Endless".to_string(),
         present_mode: PresentMode::AutoVsync,
         resizable: true,
@@ -43,5 +44,6 @@ fn init_window() -> WindowDescriptor {
 }
 
 fn init_camera(mut commands: Commands) {
+    info!("Init camera");
     commands.spawn_bundle(Camera2dBundle::default());
 }

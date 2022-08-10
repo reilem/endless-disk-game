@@ -40,3 +40,5 @@ bevy = { version = "0.8", features = ["dynamic"] }
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 # Game engine, enable all defaults
 bevy = { version = "0.8" }
+# Panic hooks in wasm
+console_error_panic_hook = "0.1.7"

@@ -37,13 +37,18 @@ Running:
 cargo run
 ```
 
+To change log level (default is info):
+```sh
+RUST_LOG=warn cargo run
+```
+
 **Release mode:**
 Creates unoptimized (with debug info & all features) binary into `target/debug`:
 ```sh
 cargo build
 ```
 
-Creates optimized (with logging features disables) binary into `target/release`:
+Creates optimized (with logging features disabled) binary into `target/release`:
 ```sh
 cargo build --release --no-default-features
 ```
