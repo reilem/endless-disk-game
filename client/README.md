@@ -23,7 +23,7 @@ The game can then be accessed at: http://localhost:8080
 
 **Release mode:** Builds the project and places it into the `dist` folder. Serving this folder by deploying it to the web or by running a simple http server inside of it will then make the game accessible.
 ```sh
-trunk build
+trunk build --release --no-default-features
 ```
 
 ### Desktop
