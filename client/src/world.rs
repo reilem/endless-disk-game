@@ -31,17 +31,14 @@ impl Plugin for WorldPlugin {
 
 fn initialise_tile_background(
     mut commands: Commands,
+    camera_query: Query<&Transform, With<Camera>>,
     map_query: Query<Entity, With<TileMap>>,
     texture_sheet: Res<TextureSheet>,
     resize_event: Res<Events<WindowResized>>,
 ) {
-    // TODO: Fix the background not updating with camera position after creation
-    // Tried: adding update system after this one. Problem: it doesn't receive new entity map
-    // Tried: passing camera offset to all tiles created. Problem: this re-centers the entire map
     let mut reader = resize_event.get_reader();
     let mut last_size: Option<Size> = None;
     for e in reader.iter(&resize_event) {
-        println!("FOUND SIZE {} x {}", e.width, e.height);
         last_size = Some(Size {
             width: e.width,
             height: e.height,
@@ -50,12 +47,17 @@ fn initialise_tile_background(
 
     if let Some(window_size) = last_size {
         if let Ok(tile_map) = map_query.get_single() {
-            println!("Tile map found, despawning");
             commands.entity(tile_map).despawn_recursive();
         }
-        println!("Creating new map with size: {:?}", window_size);
-        create_tile_background(commands, texture_sheet, window_size);
-        println!("Created new map");
+        let camera_transform = camera_query
+            .get_single()
+            .unwrap_or_else(|err| panic!("Failed to get camera in init world: {:?}", err));
+        create_tile_background(
+            commands,
+            texture_sheet,
+            window_size,
+            camera_transform.translation,
+        );
     }
 }
 
@@ -63,21 +65,26 @@ fn create_tile_background(
     mut commands: Commands,
     texture_sheet: Res<TextureSheet>,
     window_size: Size<f32>,
+    camera_translation: Vec3,
 ) {
     // NOTE: Discussion on larger worlds and f32 vs f64 https://github.com/bevyengine/bevy/issues/1680
     //       We will likely need to have our own f64 coordinate system and for rendering simply use the screen bounds as coordinates
     let x_square_count = number_of_squares_horizontally(&window_size);
     let y_square_count = number_of_squares_vertically(&window_size);
 
-    let mut tiles = Vec::new();
+    let camera_tile_offset = Vec2 {
+        x: (camera_translation.x / TILE_SIZE).floor() * TILE_SIZE,
+        y: (camera_translation.y / TILE_SIZE).floor() * TILE_SIZE,
+    };
 
+    let mut tiles = Vec::new();
     for y in grid_range_start(y_square_count)..grid_range_end(y_square_count) {
         for x in grid_range_start(x_square_count)..grid_range_end(x_square_count) {
             let tile = spawn_sprite(
                 &mut commands,
                 &texture_sheet,
                 0,
-                tile_location(IVec2 { x, y }),
+                tile_location(IVec2 { x, y }, camera_tile_offset),
             );
             commands
                 .entity(tile)
@@ -119,7 +126,6 @@ pub fn update_tile_background(
     map_query: Query<&TileMap>,
     mut tile_query: Query<&mut Transform, (With<WorldTile>, Without<Camera>)>,
 ) {
-    println!("UPDATE CHECK");
     let tile_map = map_query.get_single().unwrap_or_else(|err| {
         panic!(
             "Failed to get tile map in update_tile_background: {:?}",
@@ -151,15 +157,23 @@ fn add_fire(
     texture_sheet: &TextureSheet,
     index_position: IVec2,
 ) -> Entity {
+    let offset = Vec3 {
+        x: 0.0,
+        y: 0.0,
+        z: 0.0,
+    };
     let fire = spawn_sprite(
         commands,
         texture_sheet,
         1,
-        tile_location_3(IVec3 {
-            x: index_position.x,
-            y: index_position.y,
-            z: 10,
-        }),
+        tile_location_3(
+            IVec3 {
+                x: index_position.x,
+                y: index_position.y,
+                z: 10,
+            },
+            offset,
+        ),
     );
     commands.entity(fire).insert(TileCollider);
     fire
@@ -169,24 +183,31 @@ fn add_fire(
  * Calculates the tile location transformation required to put the tile in the correct position in the world.
  * Does this by simply multiplying the given tile index position by tile size.
  */
-fn tile_location(index_position: IVec2) -> Vec3 {
-    tile_location_3(IVec3 {
-        x: index_position.x,
-        y: index_position.y,
-        z: 0,
-    })
+fn tile_location(index_position: IVec2, offset: Vec2) -> Vec3 {
+    tile_location_3(
+        IVec3 {
+            x: index_position.x,
+            y: index_position.y,
+            z: 0,
+        },
+        Vec3 {
+            x: offset.x,
+            y: offset.y,
+            z: 0.0,
+        },
+    )
 }
 
 /**
  * Calculates the tile location transformation required to put the tile in the correct position in the world.
  * Does this by simply multiplying the given tile index position by tile size.
  */
-fn tile_location_3(index_position: IVec3) -> Vec3 {
+fn tile_location_3(index_position: IVec3, offset: Vec3) -> Vec3 {
     Vec3 {
         x: tile_index_to_world_coord(index_position.x),
         y: tile_index_to_world_coord(index_position.y),
         z: index_position.z as f32,
-    }
+    } + offset
 }
 
 fn tile_index_to_world_coord(index: i32) -> f32 {

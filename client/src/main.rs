@@ -24,8 +24,9 @@ pub fn main() {
 }
 
 fn init_window() -> WindowDescriptor {
+    // TODO: Enable printing and panics in wasm
     WindowDescriptor {
-        width: 1024.0, // TODO: make full screen in wasm & allow resizing in desktop & wasm. Might help: (https://github.com/horup/some-tank-game-rs/blob/main/src/wasm/mod.rs)
+        width: 1024.0, // TODO: make full screen in wasm. Might help: (https://github.com/horup/some-tank-game-rs/blob/main/src/wasm/mod.rs)
         height: 768.0,
         title: "Endless".to_string(),
         present_mode: PresentMode::AutoVsync,
