@@ -27,7 +27,6 @@ pub fn main() {
 }
 
 fn init_window() -> WindowDescriptor {
-    // TODO: Remove scrollbar, pull to refresh and dragging issue in web mobile
     WindowDescriptor {
         title: "Endless".to_string(),
         present_mode: PresentMode::AutoVsync,
