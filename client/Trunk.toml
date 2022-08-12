@@ -2,4 +2,4 @@
 # Makes the server available on all local IP addresses (192.168.x.x, localhost, etc.)
 address = "0.0.0.0"
 # The port to serve on
-port = 3000
+port = 8080

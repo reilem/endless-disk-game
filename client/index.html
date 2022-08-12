@@ -6,7 +6,11 @@
             margin: 0;
             height: 100vh;
             background-color: #222;
-            overflow: hidden;
+            overflow: hidden; /* Hides scrollbar (desktop) */
+            overscroll-behavior-y: contain; /* Keeps everything in frame (safari mobile web) */
+            touch-action: none; /* Disables pull to refresh (safari mobile web) */
+            user-select: none; /* Works with -webkit-user-select (mobile web) */
+            -webkit-user-select: none; /* Prevents click and hold selection (safari mobile web) */
         }
         p {
             font-family: 'Courier New', Courier, monospace;
