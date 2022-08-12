@@ -10,21 +10,18 @@ This crate holds the client code for a WIP rust game. Everything is very experim
 
 ## Running
 
-Quick: Cmd + Shift + B shows overview of tasks
+Quick in VSCode: Cmd (or Ctrl) + Shift + B shows overview of tasks
 
 ### WASM
 
-**Development mode:** Builds the project and opens it in a new browser tab. Auto-reloads when the project changes.
+Builds the project and opens it in a new browser tab. Auto-reloads when the project changes.
 ```sh
 trunk serve
 ```
 
-The game can then be accessed at: http://localhost:8080
-
-**Release mode:** Builds the project and places it into the `dist` folder. Serving this folder by deploying it to the web or by running a simple http server inside of it will then make the game accessible.
-```sh
-trunk build --release --no-default-features
-```
+The game can then be accessed at:
+- http://localhost:8080
+- http://[YOUR_LOCAL_IP]:8080
 
 ### Desktop
 
@@ -42,7 +39,17 @@ To change log level (default is info):
 RUST_LOG=warn cargo run
 ```
 
-**Release mode:**
+## Building
+
+### WASM
+
+Builds the project and places it into the `dist` folder. Serving this folder by deploying it to the web or by running a simple http server inside of it will then make the game accessible.
+```sh
+trunk build --release --no-default-features
+```
+
+### Desktop
+
 Creates unoptimized (with debug info & all features) binary into `target/debug`:
 ```sh
 cargo build
@@ -51,4 +58,8 @@ cargo build
 Creates optimized (with logging features disabled) binary into `target/release`:
 ```sh
 cargo build --release --no-default-features
+```
+Then copy paste the assets folder into `target/release` and run it with:
+```sh
+./target/release/endless_disk
 ```

@@ -22,22 +22,18 @@ opt-level = 3
 [profile.release]
 lto = true
 
+[features]
+dev = ["bevy/dynamic"]
+
 [dependencies]
 # Logging library interface
 log = "0.4"
 # Debugger
 bevy-inspector-egui = { version = "0.12.1" }
 # Game engine, added here to resolve imports
-bevy = { version = "0.8", default-features = false }
-
-## Non WASM dependencies
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-# Game engine, specify dynamic linking
-bevy = { version = "0.8", features = ["dynamic"] }
+bevy = { version = "0.8" }
 
 ## WASM dependencies
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-# Game engine, enable all defaults
-bevy = { version = "0.8" }
 # Panic hooks in wasm
 console_error_panic_hook = "0.1.7"
